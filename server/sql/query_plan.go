@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"gin-vue-redhat/server/auth"
+	"gin-vue-redhat/server/config"
 )
 
 // --- Qwen API 相关的结构体定义 ---
@@ -179,10 +180,10 @@ func convertPlanToString(rows []map[string]interface{}) string {
 
 // callQwenInterpret 封装通义千问 API 请求逻辑
 func callQwenInterpret(sqlText, planText string) (string, int, error) {
-	// 获取 API Key (建议在环境变量中设置 DASHSCOPE_API_KEY)
-	apiKey := "sk-3984bd609d8549df8fa8bf9756ff5836"
+	// 获取 API Key (统一配置在 platform_db.go 中)
+	apiKey := config.QwenAPIKey
 	if apiKey == "" {
-		return "", 0, fmt.Errorf("未配置 DASHSCOPE_API_KEY 环境变量")
+		return "", 0, fmt.Errorf("未配置 DASHSCOPE_API_KEY")
 	}
 
 	apiUrl := "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
