@@ -50,7 +50,7 @@ gin-vue-redhat/
 │   ├── web/dist/           # 编译后的前端静态文件目录 (使用 embed 嵌入)
 │   ├── main.go             # 后端服务入口
 │   └── go.mod              # Go 模块依赖
-├── init.sql                # 平台内置 SQLite 数据库初始化脚本
+├── init.sql                # 数据库初始化脚本
 └── README.md               # 项目说明文档
 ```
 
