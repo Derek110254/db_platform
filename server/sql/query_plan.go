@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"gin-vue-redhat/server/auth"
-	"gin-vue-redhat/server/config"
+	"sql_platform/server/auth"
+	"sql_platform/server/config"
 )
 
 // --- Qwen API 相关的结构体定义 ---

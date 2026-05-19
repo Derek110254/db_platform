@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"gin-vue-redhat/server/auth"
+	"sql_platform/server/auth"
 
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/sijms/go-ora/v2"

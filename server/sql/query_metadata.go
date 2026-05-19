@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"gin-vue-redhat/server/auth"
+	"sql_platform/server/auth"
 )
 
 /*

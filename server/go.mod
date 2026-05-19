@@ -1,4 +1,4 @@
-module gin-vue-redhat/server
+module sql_platform/server
 
 go 1.25.7
 

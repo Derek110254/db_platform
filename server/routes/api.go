@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"gin-vue-redhat/server/auth"
-	"gin-vue-redhat/server/config"
-	"gin-vue-redhat/server/middleware"
-	appsql "gin-vue-redhat/server/sql"
+	"sql_platform/server/auth"
+	"sql_platform/server/config"
+	"sql_platform/server/middleware"
+	appsql "sql_platform/server/sql"
 
 	"github.com/gin-gonic/gin"
 )

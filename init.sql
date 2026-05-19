@@ -78,6 +78,9 @@ CREATE TABLE IF NOT EXISTS platform_user (
     display_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '显示名称',
     role_name VARCHAR(64) NOT NULL DEFAULT 'user' COMMENT '角色名称：admin/user',
     is_enabled TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用：1启用，0禁用',
+    can_query_data TINYINT NOT NULL DEFAULT 1 COMMENT '是否允许访问查询页面：1是，0否',
+    can_query_plan TINYINT NOT NULL DEFAULT 1 COMMENT '是否允许访问执行计划页面：1是，0否',
+    need_change_pwd TINYINT NOT NULL DEFAULT 1 COMMENT '首次登录是否需要修改密码：1是，0否',
     create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
@@ -174,6 +177,28 @@ CREATE TABLE IF NOT EXISTS platform_sql_favorite (
     KEY idx_platform_sql_favorite_is_pinned (is_pinned)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='SQL收藏表';
 
+
+-- =========================================================
+-- 8. 创建 SQL AI审核记录表
+-- ---------------------------------------------------------
+-- 对应代码中的 platform_sql_audit 表
+-- =========================================================
+CREATE TABLE IF NOT EXISTS platform_sql_audit (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    user_id BIGINT NOT NULL COMMENT '提交用户ID',
+    connection_name VARCHAR(64) NOT NULL DEFAULT '' COMMENT '数据库连接名称',
+    sql_text LONGTEXT NOT NULL COMMENT '提交审核的SQL内容',
+	sql_digest VARCHAR(64) NOT NULL COMMENT 'SQL结构指纹哈希',
+    ai_suggestion LONGTEXT COMMENT 'AI审核建议文本',
+    ai_score INT DEFAULT 0 COMMENT 'AI审核评分(0-100)',
+    create_time datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '审核时间',
+    update_time datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_platform_sql_audit_user_id (user_id),
+    KEY idx_platform_sql_audit_connection_name (connection_name),
+    KEY idx_platform_sql_audit_create_time (create_time),
+	KEY idx_sql_digest (sql_digest)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='SQL AI审核记录表';
 
 -- =========================================================
 -- 9. 插入管理员用户

@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"gin-vue-redhat/server/auth"
-	"gin-vue-redhat/server/routes"
+	"sql_platform/server/auth"
+	"sql_platform/server/routes"
 
 	"github.com/gin-gonic/gin"
 )

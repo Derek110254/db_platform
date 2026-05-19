@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"gin-vue-redhat/server/config"
+	"sql_platform/server/config"
 
 	"github.com/gin-gonic/gin"
 )

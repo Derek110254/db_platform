@@ -1,4 +1,4 @@
-# Gin-Vue 数据库审计管理平台
+# sql_platform 数据库审计管理平台
 
 基于 Go (Gin) 和 Vue 3 构建的轻量级、安全且易于使用的 SQL 数据库管理与审计平台。它提供了一个 Web 界面，用于执行查询、审查执行计划、进行 SQL 风险分析以及将结果导出为 Excel，并内置了严格的访问控制和操作审计功能。
 
@@ -25,7 +25,7 @@
   - `github.com/go-sql-driver/mysql` (MySQL)
   - `github.com/sijms/go-ora/v2` (Oracle)
 - **Excel 导出：** `github.com/xuri/excelize/v2`
-- **平台内置存储：** SQLite (用于存储用户、连接配置及审计记录，初始化见 `init.sql`)
+- **初始化见 `init.sql`
 
 ### 前端 (Client)
 - **框架：** Vue 3 (Composition API, `<script setup>`)
@@ -37,7 +37,7 @@
 ## 目录结构
 
 ```text
-gin-vue-redhat/
+sql_platform/
 ├── client/                 # Vue 3 前端工程
 │   ├── src/                # 组件、样式及页面逻辑
 │   ├── package.json        # 前端依赖配置

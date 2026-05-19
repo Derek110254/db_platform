@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	"gin-vue-redhat/server/auth"
+	"sql_platform/server/auth"
 
 	"github.com/gin-gonic/gin"
 )
