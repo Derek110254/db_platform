@@ -1,92 +1,90 @@
-# sql_platform
+# Gin-Vue 数据库审计管理平台
 
+基于 Go (Gin) 和 Vue 3 构建的轻量级、安全且易于使用的 SQL 数据库管理与审计平台。它提供了一个 Web 界面，用于执行查询、审查执行计划、进行 SQL 风险分析以及将结果导出为 Excel，并内置了严格的访问控制和操作审计功能。
 
+## 核心功能
 
-## Getting started
+- **多数据库支持：** 支持连接并查询 MySQL 和 Oracle 数据库。
+- **安全的查询执行：**
+  - 严格限制仅允许执行 `SELECT` 和 `WITH` 查询语句，从代码层面拦截 `INSERT`、`UPDATE`、`DELETE`、`DROP` 等写操作。
+  - 在数据库执行层内置了最大返回行数限制（最多 500 行），防止恶意大数据量查询导致资源耗尽或大规模数据泄露。
+- **SQL 风险静态检测：** 在执行前，对 SQL 语句进行风险规则匹配分析（例如：缺少 WHERE 条件、全表扫描等），并对高风险操作进行预警。
+- **执行计划解读 (EXPLAIN)：** 集成了数据库的 EXPLAIN 命令，展示查询执行计划，并可通过 AI 接口提供执行计划的智能解读建议。
+- **操作审计日志：** 详细记录每一次查询的审计信息，包括执行者、目标数据库、SQL 指纹及执行耗时。
+- **数据导出：** 一键将查询结果导出为 Excel (.xlsx) 文件，解决长数字科学计数法失真问题。
+- **连接与权限管理：** 管理员可统一配置数据库连接，并基于用户进行细粒度的连接授权，普通用户仅能看到和操作分配给自己的数据库。
+- **SQL 收藏夹：** 用户可以保存常用的 SQL 片段，方便随时调用。
+- **角色权限隔离：** 区分普通用户和管理员角色，保障平台管理安全。
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## 技术栈
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+### 后端 (Server)
+- **开发语言：** Go (1.20+)
+- **Web 框架：** Gin
+- **数据库驱动：**
+  - `github.com/go-sql-driver/mysql` (MySQL)
+  - `github.com/sijms/go-ora/v2` (Oracle)
+- **Excel 导出：** `github.com/xuri/excelize/v2`
+- **平台内置存储：** SQLite (用于存储用户、连接配置及审计记录，初始化见 `init.sql`)
 
-## Add your files
+### 前端 (Client)
+- **框架：** Vue 3 (Composition API, `<script setup>`)
+- **语言：** TypeScript
+- **构建工具：** Vite
+- **代码编辑器：** CodeMirror 6 (支持 SQL 语法高亮与格式化)
+- **样式：** 原生 CSS 结合 Vue 组件作用域
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+## 目录结构
 
+```text
+gin-vue-redhat/
+├── client/                 # Vue 3 前端工程
+│   ├── src/                # 组件、样式及页面逻辑
+│   ├── package.json        # 前端依赖配置
+│   └── vite.config.ts      # Vite 构建配置
+├── server/                 # Go 后端工程
+│   ├── auth/               # 认证、鉴权、内置数据库及配置管理
+│   ├── middleware/         # Gin 中间件 (如日志、权限拦截)
+│   ├── routes/             # API 路由与前端静态资源托管
+│   ├── sql/                # SQL 核心引擎 (执行、风险检测、执行计划等)
+│   ├── web/dist/           # 编译后的前端静态文件目录 (使用 embed 嵌入)
+│   ├── main.go             # 后端服务入口
+│   └── go.mod              # Go 模块依赖
+├── init.sql                # 平台内置 SQLite 数据库初始化脚本
+└── README.md               # 项目说明文档
 ```
-cd existing_repo
-git remote add origin http://10.228.126.24/yunwei/dba/sql_platform.git
-git branch -M main
-git push -uf origin main
+
+## 本地运行指南
+
+### 环境依赖
+
+- Go (1.20 或更高版本)
+- Node.js (v20 或更高版本)及 npm 工具
+
+### 1. 编译前端
+
+进入 `client` 目录，安装依赖并进行打包。Vite 会将编译结果输出到 `server/web/dist` 目录下，以便 Go 后端在编译时将其直接嵌入到二进制文件中。
+
+```bash
+cd client
+npm install
+npm run build-only
 ```
 
-## Integrate with your tools
+### 2. 运行后端服务
 
-- [ ] [Set up project integrations](http://10.228.126.24/yunwei/dba/sql_platform/-/settings/integrations)
+进入 `server` 目录，启动 Gin 服务。默认将在 `2345` 端口运行。
 
-## Collaborate with your team
+```bash
+cd ../server
+go mod tidy
+go run main.go
+```
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Automatically merge when pipeline succeeds](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+启动成功后，即可在浏览器中访问：`http://localhost:2345`
 
-## Test and Deploy
+## 安全性说明
 
-Use the built-in continuous integration in GitLab.
-
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing(SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!).  Thank you to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+- **SQL 注入防范：** 平台通过正则表达式过滤 DML 语句，并在最外层使用安全的嵌套策略（`SELECT * FROM ( \n %s \n ) LIMIT ...`）彻底封堵了通过 `--` 或 `#` 注释绕过行数限制的漏洞。
+- **敏感信息保护：** 数据库密码等敏感信息加密存储于平台内部数据库中，不会在前端明文暴露。
+- **可追溯性：** `logs/access.log` 会记录所有 API 的 HTTP 请求日志，平台内的“审计历史”功能也会持久化保存每一条执行过的 SQL，确保一切操作有迹可循。
