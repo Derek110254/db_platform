@@ -382,10 +382,12 @@ func buildLimitedQuerySQL(dbType string, rawSQL string, limit int) string {
 	switch dbType {
 	case "oracle":
 		// Oracle 11g 使用 ROWNUM 包裹
-		return fmt.Sprintf("SELECT * FROM (%s) WHERE ROWNUM <= %d", sqlText, limit)
+		// 加换行符防止 SQL 末尾的单行注释（如 --）将外层括号及 ROWNUM 限制条件注释掉
+		return fmt.Sprintf("SELECT * FROM (\n%s\n) WHERE ROWNUM <= %d", sqlText, limit)
 	default:
 		// MySQL 用 LIMIT
-		return fmt.Sprintf("SELECT * FROM (%s) AS query_result_limit_alias LIMIT %d", sqlText, limit)
+		// 加换行符防止 SQL 末尾的单行注释（如 # 或 --）将外层括号及 LIMIT 条件注释掉
+		return fmt.Sprintf("SELECT * FROM (\n%s\n) AS query_result_limit_alias LIMIT %d", sqlText, limit)
 	}
 }
 
