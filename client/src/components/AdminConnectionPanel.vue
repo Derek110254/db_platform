@@ -2,7 +2,7 @@
 /**
  * AdminConnectionPanel.vue
  * ------------------------------------------------------------------
- * 该组件用于“数据库连接管理”页面。
+ * 该组件用于“数据库管理”页面。
  *
  * 主要功能：
  * 1. 展示数据库连接配置列表
@@ -419,7 +419,7 @@ onMounted(() => {
   <div class="admin-page">
     <!-- 表单区域：新增 / 编辑 -->
     <div class="card form-card">
-      <h2>{{ isEditMode ? '编辑数据库连接' : '数据库连接管理' }}</h2>
+      <h2>{{ isEditMode ? '编辑数据库连接' : '数据库管理' }}</h2>
       <p class="result">{{ message }}</p>
 
       <div class="form-grid">

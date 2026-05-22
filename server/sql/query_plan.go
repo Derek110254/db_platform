@@ -143,19 +143,21 @@ func ExplainQueryByConnectionWithContext(
 		AiScore:        score,
 	}
 
-	// 异步保存记录
-	go func(rec auth.SqlAuditRecord) {
-		if err := auth.SaveSqlAuditRecord(rec); err != nil {
-			// 记录错误日志
-			log.Printf("[AuditError] Failed to save record for user %d: %v", rec.UserID, err)
-		}
-	}(auditRecord)
+	// 同步保存记录以获取 ID
+	var auditID int64
+	if id, err := auth.SaveSqlAuditRecord(auditRecord); err != nil {
+		// 记录错误日志
+		log.Printf("[AuditError] Failed to save record for user %d: %v", userID, err)
+	} else {
+		auditID = id
+	}
 
 	// 8. 封装最终响应结果
 	return QueryExecuteResponse{
 		OK:        true,
 		Message:   aiInterpretation,
 		Score:     score, // 传回分数
+		AuditID:   auditID, // 新增传回 AuditID
 		Columns:   rawResult.Columns,
 		Rows:      rawResult.Rows,
 		RowCount:  len(rawResult.Rows),

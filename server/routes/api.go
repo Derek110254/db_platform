@@ -200,6 +200,7 @@ func RegisterAPIRoutes(r *gin.Engine) {
 
 			// SQL 审核历史接口
 			queryGroup.GET("/audit-history", listAuditHistoryHandler)
+			queryGroup.POST("/audit-submit", submitAuditHandler)
 		}
 
 		adminGroup := api.Group("/admin")
@@ -215,6 +216,9 @@ func RegisterAPIRoutes(r *gin.Engine) {
 			adminGroup.PUT("/db-connections", adminUpdateConnectionHandler)
 			adminGroup.DELETE("/db-connections", adminDeleteConnectionHandler)
 			adminGroup.POST("/db-connections/test", adminTestConnectionHandler)
+
+			adminGroup.GET("/audits", adminListSubmittedAuditsHandler)
+			adminGroup.PUT("/audits/review", adminReviewAuditHandler)
 		}
 	}
 }
@@ -1284,7 +1288,7 @@ func adminDeleteUserHandler(c *gin.Context) {
 }
 
 // ----------------------------------------------------------------------
-// 管理员：数据库连接管理
+// 管理员：数据库管理
 // ----------------------------------------------------------------------
 
 func adminListConnectionsHandler(c *gin.Context) {
@@ -1822,5 +1826,125 @@ func listAuditHistoryHandler(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"total":   total,
 		"history": records,
+	})
+}
+
+// 请求体: { "auditId": 123, "submitAudit": 1, "remark": "..." }
+func submitAuditHandler(c *gin.Context) {
+	userIDVal, exists := c.Get("currentUserID")
+	if !exists {
+		c.JSON(401, gin.H{"error": "未登录"})
+		return
+	}
+	userID := userIDVal.(int64)
+
+	var req struct {
+		AuditID     int64  `json:"auditId"`
+		SubmitAudit int    `json:"submitAudit"`
+		Remark      string `json:"remark"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "参数错误"})
+		return
+	}
+
+	if req.AuditID <= 0 {
+		c.JSON(400, gin.H{"error": "非法的 auditId"})
+		return
+	}
+
+	if req.SubmitAudit < 1 || req.SubmitAudit > 5 {
+		c.JSON(400, gin.H{"error": "非法的提交审核类型"})
+		return
+	}
+
+	if req.SubmitAudit == 5 && strings.TrimSpace(req.Remark) == "" {
+		c.JSON(400, gin.H{"error": "选择“其他”时备注不能为空"})
+		return
+	}
+
+	if err := auth.SubmitSqlAudit(req.AuditID, userID, req.SubmitAudit, req.Remark); err != nil {
+		log.Printf("[submitAuditHandler] error: %v", err)
+		c.JSON(500, gin.H{"error": "提交审核失败"})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"message": "提交成功",
+	})
+}
+
+// adminListSubmittedAuditsHandler
+// ----------------------------------------------------------------------
+func adminListSubmittedAuditsHandler(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if page < 1 {
+		page = 1
+	}
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	if pageSize < 1 {
+		pageSize = 10
+	}
+
+	status := c.Query("status")
+	submitter := c.Query("submitter")
+	connection := c.Query("connection")
+
+	total, records, err := auth.AdminListSubmittedAudits(page, pageSize, status, submitter, connection)
+	if err != nil {
+		log.Printf("[adminListSubmittedAuditsHandler] error: %v", err)
+		c.JSON(500, gin.H{"error": "获取提交审核记录失败"})
+		return
+	}
+
+	if records == nil {
+		records = []auth.AdminSqlAuditRecord{}
+	}
+
+	c.JSON(200, gin.H{
+		"total":   total,
+		"history": records,
+	})
+}
+
+// adminReviewAuditHandler
+// ----------------------------------------------------------------------
+func adminReviewAuditHandler(c *gin.Context) {
+	var req struct {
+		AuditID     int64 `json:"auditId"`
+		AuditPassed int   `json:"auditPassed"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "参数错误"})
+		return
+	}
+
+	if req.AuditID <= 0 {
+		c.JSON(400, gin.H{"error": "非法的 auditId"})
+		return
+	}
+
+	if req.AuditPassed != 1 && req.AuditPassed != -1 {
+		c.JSON(400, gin.H{"error": "非法的审核状态"})
+		return
+	}
+
+	reviewer := "admin"
+	if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+		reviewer = displayName.(string)
+	} else if username, ok := c.Get("currentUsername"); ok && username.(string) != "" {
+		reviewer = username.(string)
+	}
+
+	if err := auth.AdminReviewAudit(req.AuditID, req.AuditPassed, reviewer); err != nil {
+		log.Printf("[adminReviewAuditHandler] error: %v", err)
+		c.JSON(500, gin.H{"error": "审核操作失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"message": "审核操作成功",
 	})
 }

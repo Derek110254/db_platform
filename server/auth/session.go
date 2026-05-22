@@ -197,6 +197,10 @@ CREATE TABLE IF NOT EXISTS platform_sql_audit (
 	sql_digest VARCHAR(64) NOT NULL COMMENT 'SQL结构指纹哈希',
     ai_suggestion LONGTEXT COMMENT 'AI审核建议文本',
     ai_score INT DEFAULT 0 COMMENT 'AI审核评分(0-100)',
+    submit_audit TINYINT NOT NULL DEFAULT 0 COMMENT '提交审核（默认0未提交，1面向交易，2面向用户，3后台配置，4报表生成，5其他）',
+    audit_passed TINYINT NOT NULL DEFAULT 0 COMMENT '审核通过（默认0未通过，1审核通过，-1审核驳回）',
+    reviewer VARCHAR(64) NOT NULL DEFAULT 'admin' COMMENT '审核人员',
+    remark VARCHAR(500) NOT NULL DEFAULT '' COMMENT '备注',
     create_time datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '审核时间',
     update_time datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
@@ -840,30 +844,39 @@ type SqlAuditRecord struct {
 	SqlDigest      string `json:"sqlDigest"` // 新增：指纹字段
 	AiSuggestion   string `json:"aiSuggestion"`
 	AiScore        int    `json:"aiScore"`
+	SubmitAudit    int    `json:"submitAudit"`
+	AuditPassed    int    `json:"auditPassed"`
+	Remark         string `json:"remark"`
 }
 
 // SaveSqlAuditRecord
 // ----------------------------------------------------------------------
 // 将 AI 审核记录持久化到平台库
-func SaveSqlAuditRecord(record SqlAuditRecord) error {
+func SaveSqlAuditRecord(record SqlAuditRecord) (int64, error) {
 	db, err := getAuthDB()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	query := `
-INSERT INTO platform_sql_audit (user_id, connection_name, sql_text, sql_digest, ai_suggestion, ai_score)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO platform_sql_audit (user_id, connection_name, sql_text, sql_digest, ai_suggestion, ai_score, submit_audit, audit_passed, remark)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
-	_, err = db.Exec(query,
+	res, err := db.Exec(query,
 		record.UserID,
 		record.ConnectionName,
 		record.SqlText,
 		record.SqlDigest,
 		record.AiSuggestion,
 		record.AiScore,
+		record.SubmitAudit,
+		record.AuditPassed,
+		record.Remark,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
 }
 
 type SqlAuditHistoryRecord struct {
@@ -872,6 +885,10 @@ type SqlAuditHistoryRecord struct {
 	SqlText        string `json:"sqlText"`
 	AiSuggestion   string `json:"aiSuggestion"`
 	AiScore        int    `json:"aiScore"`
+	SubmitAudit    int    `json:"submitAudit"`
+	AuditPassed    int    `json:"auditPassed"`
+	Reviewer       string `json:"reviewer"`
+	Remark         string `json:"remark"`
 	CreateTime     string `json:"createTime"`
 }
 
@@ -886,7 +903,7 @@ func GetSqlAuditHistoryByUserID(userID int64, digest string, page int, pageSize 
 
 	countQuery := `SELECT COUNT(*) FROM platform_sql_audit WHERE user_id = ?`
 	query := `
-SELECT id, connection_name, sql_text, ai_suggestion, ai_score, create_time
+SELECT id, connection_name, sql_text, ai_suggestion, ai_score, submit_audit, audit_passed, reviewer, remark, create_time
 FROM platform_sql_audit
 WHERE user_id = ?
 `
@@ -917,13 +934,165 @@ WHERE user_id = ?
 	var records []SqlAuditHistoryRecord
 	for rows.Next() {
 		var rec SqlAuditHistoryRecord
-		if err := rows.Scan(&rec.ID, &rec.ConnectionName, &rec.SqlText, &rec.AiSuggestion, &rec.AiScore, &rec.CreateTime); err != nil {
+		if err := rows.Scan(&rec.ID, &rec.ConnectionName, &rec.SqlText, &rec.AiSuggestion, &rec.AiScore, &rec.SubmitAudit, &rec.AuditPassed, &rec.Reviewer, &rec.Remark, &rec.CreateTime); err != nil {
 			return 0, nil, err
 		}
 		records = append(records, rec)
 	}
 
 	return total, records, nil
+}
+
+// SubmitSqlAudit
+// ----------------------------------------------------------------------
+// 提交 SQL 审核
+func SubmitSqlAudit(auditID int64, userID int64, submitAudit int, remark string) error {
+	db, err := getAuthDB()
+	if err != nil {
+		return err
+	}
+
+	query := `
+UPDATE platform_sql_audit 
+SET submit_audit = ?, remark = ?
+WHERE id = ? AND user_id = ?
+`
+	result, err := db.Exec(query, submitAudit, remark, auditID, userID)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return errors.New("审核记录不存在或无权限修改")
+	}
+
+	return nil
+}
+
+type AdminSqlAuditRecord struct {
+	ID             int64  `json:"id"`
+	UserID         int64  `json:"userId"`
+	Username       string `json:"username"`
+	DisplayName    string `json:"displayName"`
+	ConnectionName string `json:"connectionName"`
+	SqlText        string `json:"sqlText"`
+	AiSuggestion   string `json:"aiSuggestion"`
+	AiScore        int    `json:"aiScore"`
+	SubmitAudit    int    `json:"submitAudit"`
+	AuditPassed    int    `json:"auditPassed"`
+	Reviewer       string `json:"reviewer"`
+	Remark         string `json:"remark"`
+	CreateTime     string `json:"createTime"`
+}
+
+// AdminListSubmittedAudits
+// ----------------------------------------------------------------------
+// 管理员获取所有已提交的审核记录
+func AdminListSubmittedAudits(page int, pageSize int, status string, submitter string, connection string) (int64, []AdminSqlAuditRecord, error) {
+	db, err := getAuthDB()
+	if err != nil {
+		return 0, nil, err
+	}
+
+	baseWhere := "WHERE a.submit_audit > 0"
+	var args []interface{}
+
+	switch status {
+	case "pending":
+		baseWhere += " AND a.audit_passed = 0"
+	case "passed":
+		baseWhere += " AND a.audit_passed = 1"
+	case "rejected":
+		baseWhere += " AND a.audit_passed = -1"
+	}
+
+	if submitter != "" {
+		baseWhere += " AND (u.username LIKE ? OR u.display_name LIKE ?)"
+		likeSubmitter := "%" + submitter + "%"
+		args = append(args, likeSubmitter, likeSubmitter)
+	}
+
+	if connection != "" {
+		baseWhere += " AND a.connection_name LIKE ?"
+		args = append(args, "%"+connection+"%")
+	}
+
+	countQuery := `
+SELECT COUNT(*) 
+FROM platform_sql_audit a
+LEFT JOIN platform_user u ON a.user_id = u.id
+` + baseWhere
+
+	var total int64
+	err = db.QueryRow(countQuery, args...).Scan(&total)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	query := `
+SELECT a.id, a.user_id, u.username, u.display_name, a.connection_name, a.sql_text, 
+       a.ai_suggestion, a.ai_score, a.submit_audit, a.audit_passed, a.reviewer, a.remark, a.create_time
+FROM platform_sql_audit a
+LEFT JOIN platform_user u ON a.user_id = u.id
+` + baseWhere + `
+ORDER BY a.create_time DESC LIMIT ? OFFSET ?
+`
+	offset := (page - 1) * pageSize
+	args = append(args, pageSize, offset)
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer rows.Close()
+
+	var records []AdminSqlAuditRecord
+	for rows.Next() {
+		var rec AdminSqlAuditRecord
+		var displayName sql.NullString
+		if err := rows.Scan(&rec.ID, &rec.UserID, &rec.Username, &displayName, &rec.ConnectionName, &rec.SqlText,
+			&rec.AiSuggestion, &rec.AiScore, &rec.SubmitAudit, &rec.AuditPassed, &rec.Reviewer, &rec.Remark, &rec.CreateTime); err != nil {
+			return 0, nil, err
+		}
+		if displayName.Valid {
+			rec.DisplayName = displayName.String
+		}
+		records = append(records, rec)
+	}
+
+	return total, records, nil
+}
+
+// AdminReviewAudit
+// ----------------------------------------------------------------------
+// 管理员审核通过/驳回
+func AdminReviewAudit(auditID int64, auditPassed int, reviewer string) error {
+	db, err := getAuthDB()
+	if err != nil {
+		return err
+	}
+
+	query := `UPDATE platform_sql_audit SET audit_passed = ?, reviewer = ? WHERE id = ? AND submit_audit > 0`
+	result, err := db.Exec(query, auditPassed, reviewer, auditID)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return errors.New("审核记录不存在或未提交审核")
+	}
+
+	return nil
 }
 
 // BuildPasswordCipher

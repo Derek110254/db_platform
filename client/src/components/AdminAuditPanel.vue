@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 
-interface SqlAuditHistoryRecord {
+interface AdminSqlAuditRecord {
   id: number
+  userId: number
+  username: string
+  displayName: string
   connectionName: string
   sqlText: string
   aiSuggestion: string
@@ -15,90 +18,130 @@ interface SqlAuditHistoryRecord {
 }
 
 const loading = ref(false)
-const historyList = ref<SqlAuditHistoryRecord[]>([])
+const auditList = ref<AdminSqlAuditRecord[]>([])
 const message = ref('')
-const searchSql = ref('')
 
 const currentPage = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 
-import { computed } from 'vue'
+const filterStatus = ref('')
+const filterSubmitter = ref('')
+const filterConnection = ref('')
 
-const totalPages = computed(() => {
-  return Math.ceil(total.value / pageSize.value) || 1
-})
+const toastMessage = ref('')
+const showToast = (msg: string) => {
+  toastMessage.value = msg
+  setTimeout(() => {
+    toastMessage.value = ''
+  }, 2000)
+}
 
 const handleSizeChange = (val: number) => {
   pageSize.value = val
   currentPage.value = 1
-  loadHistory()
+  loadAudits()
 }
 
 const handleCurrentChange = (val: number) => {
   currentPage.value = val
-  loadHistory()
+  loadAudits()
 }
 
 const searchWithReset = () => {
   currentPage.value = 1
-  loadHistory()
+  loadAudits()
 }
 
 const resetSearch = () => {
-  searchSql.value = ''
+  filterStatus.value = ''
+  filterSubmitter.value = ''
+  filterConnection.value = ''
   currentPage.value = 1
-  loadHistory()
+  loadAudits()
 }
 
-const loadHistory = async () => {
+const loadAudits = async () => {
   loading.value = true
   message.value = '加载中...'
   try {
     const params = new URLSearchParams()
-    if (searchSql.value.trim() !== '') {
-      params.append('sql', searchSql.value.trim())
-    }
     params.append('page', currentPage.value.toString())
     params.append('pageSize', pageSize.value.toString())
+    if (filterStatus.value) params.append('status', filterStatus.value)
+    if (filterSubmitter.value) params.append('submitter', filterSubmitter.value.trim())
+    if (filterConnection.value) params.append('connection', filterConnection.value.trim())
 
-    const url = `/api/audit-history?${params.toString()}`
+    const url = `/api/admin/audits?${params.toString()}`
 
     const res = await fetch(url, {
       credentials: 'include',
     })
     
-    if (res.status === 401) {
-      message.value = '登录已失效，请重新登录'
-      historyList.value = []
+    if (res.status === 401 || res.status === 403) {
+      message.value = '无权限访问或登录已失效'
+      auditList.value = []
       total.value = 0
       return
     }
     
     const data = await res.json()
-    historyList.value = data.history || []
+    auditList.value = data.history || []
     total.value = data.total || 0
-    if (historyList.value.length === 0) {
-      message.value = '暂无审核历史记录'
+    if (auditList.value.length === 0) {
+      message.value = '暂无已提交的审核记录'
     } else {
       message.value = ''
     }
   } catch (err) {
     console.error(err)
-    message.value = '获取审核历史失败'
+    message.value = '获取审核列表失败'
   } finally {
     loading.value = false
   }
 }
 
-onMounted(() => {
-  loadHistory()
-})
+const doReviewAudit = async (auditId: number, auditPassed: number) => {
+  try {
+    const res = await fetch('/api/admin/audits/review', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        auditId: auditId,
+        auditPassed: auditPassed
+      }),
+      credentials: 'include'
+    })
 
-const getSubmitStatus = (submitAudit: number) => {
-  if (submitAudit > 0) return '已提交审核'
-  return '未提交'
+    const data = await res.json()
+    if (res.ok) {
+      showToast(data.message || '审核操作成功')
+      loadAudits() // 刷新列表
+    } else {
+      showToast(data.error || data.message || '审核操作失败')
+    }
+  } catch (err) {
+    console.error(err)
+    showToast('请求异常，请稍后重试')
+  }
 }
+
+const getSubmitAuditReason = (submitAudit: number) => {
+  switch (submitAudit) {
+    case 1: return '面向交易'
+    case 2: return '面向用户'
+    case 3: return '后台配置'
+    case 4: return '报表生成'
+    case 5: return '其他'
+    default: return '未知'
+  }
+}
+
+onMounted(() => {
+  loadAudits()
+})
 
 const getAuditStatus = (auditPassed: number, submitAudit: number) => {
   if (submitAudit === 0) return '-'
@@ -113,34 +156,46 @@ const getAuditStatusClass = (auditPassed: number) => {
   return 'status-pending'
 }
 
-const getSubmitStatusClass = (submitAudit: number) => {
-  if (submitAudit > 0) return 'status-submitted'
-  return 'status-unsubmitted'
-}
 </script>
 
 <template>
   <div class="admin-page">
     <div class="card center-card wide-center-card">
-      <h2>SQL AI 审核历史</h2>
+      <h2>SQL 审核管理</h2>
 
       <div class="module-tip">
-        展示您过去提交进行 AI 性能检测的全部 SQL 记录及其评分与建议。
+        管理员可以在此查看并审核所有用户提交的 SQL 检测记录。
       </div>
 
       <div class="search-row">
+        <select v-model="filterStatus" class="search-select" @change="searchWithReset">
+          <option value="">全部状态</option>
+          <option value="pending">待审核</option>
+          <option value="passed">已通过</option>
+          <option value="rejected">已驳回</option>
+        </select>
+        
         <input 
           type="text" 
           class="search-input" 
-          v-model="searchSql" 
-          placeholder="输入要搜索的 SQL 进行指纹匹配..." 
+          v-model="filterSubmitter" 
+          placeholder="提交人 (用户名或昵称)" 
           @keyup.enter="searchWithReset"
         />
+        
+        <input 
+          type="text" 
+          class="search-input" 
+          v-model="filterConnection" 
+          placeholder="数据库连接" 
+          @keyup.enter="searchWithReset"
+        />
+
         <button class="action-btn primary-btn small-btn" @click="searchWithReset" :disabled="loading" type="button">
           搜索
         </button>
         <button class="action-btn secondary-btn small-btn" @click="resetSearch" :disabled="loading" type="button">
-          刷新 / 重置
+          重置 / 刷新
         </button>
       </div>
 
@@ -148,23 +203,24 @@ const getSubmitStatusClass = (submitAudit: number) => {
         {{ message }}
       </div>
 
-      <div v-if="historyList.length > 0" class="history-list-wrapper">
-        <div v-for="item in historyList" :key="item.id" class="history-item-card">
+      <div v-if="auditList.length > 0" class="history-list-wrapper">
+        <div v-for="item in auditList" :key="item.id" class="history-item-card">
           <div class="history-header">
             <div class="history-meta">
-              <span class="meta-label">数据库连接：</span>
+              <span class="meta-label">提交人：</span>
+              <span class="meta-value">{{ item.displayName || item.username }} ({{ item.username }})</span>
+              
+              <span class="meta-label margin-left">连接：</span>
               <span class="meta-value">{{ item.connectionName }}</span>
+              
               <span class="meta-label margin-left">审核时间：</span>
               <span class="meta-value">{{ item.createTime }}</span>
               
-              <span class="meta-label margin-left">提交状态：</span>
-              <span class="status-badge" :class="getSubmitStatusClass(item.submitAudit)">{{ getSubmitStatus(item.submitAudit) }}</span>
+              <span class="meta-label margin-left">审核理由：</span>
+              <span class="meta-value">{{ getSubmitAuditReason(item.submitAudit) }}</span>
               
-              <span class="meta-label margin-left" v-if="item.submitAudit > 0">审核结果：</span>
-              <span class="status-badge" :class="getAuditStatusClass(item.auditPassed)" v-if="item.submitAudit > 0">{{ getAuditStatus(item.auditPassed, item.submitAudit) }}</span>
-
-              <span class="meta-label margin-left" v-if="item.auditPassed !== 0">审核人员：</span>
-              <span class="meta-value" v-if="item.auditPassed !== 0">{{ item.reviewer || '-' }}</span>
+              <span class="meta-label margin-left">状态：</span>
+              <span class="status-badge" :class="getAuditStatusClass(item.auditPassed)">{{ getAuditStatus(item.auditPassed, item.submitAudit) }}</span>
             </div>
             <div class="history-score" :class="{ 'score-high': item.aiScore >= 80, 'score-medium': item.aiScore >= 60 && item.aiScore < 80, 'score-low': item.aiScore < 60 }">
               评分：<strong>{{ item.aiScore }}</strong>
@@ -172,8 +228,16 @@ const getSubmitStatusClass = (submitAudit: number) => {
           </div>
           
           <div class="history-body">
+            <div v-if="item.remark" class="history-remark">
+              <span class="meta-label">备注：</span> {{ item.remark }}
+            </div>
             <div class="history-sql-label">SQL 内容：</div>
             <pre class="history-sql-pre">{{ item.sqlText }}</pre>
+            
+            <div class="review-actions" v-if="item.auditPassed === 0">
+              <button class="action-btn success-btn small-btn" @click="doReviewAudit(item.id, 1)">通过</button>
+              <button class="action-btn danger-btn small-btn" @click="doReviewAudit(item.id, -1)">驳回</button>
+            </div>
           </div>
           
           <div class="history-ai-section">
@@ -213,10 +277,35 @@ const getSubmitStatusClass = (submitAudit: number) => {
         </div>
       </div>
     </div>
+    
+    <!-- Toast 提示框 -->
+    <div v-if="toastMessage" class="toast-message">
+      {{ toastMessage }}
+    </div>
   </div>
 </template>
 
 <style scoped>
+.toast-message {
+  position: fixed;
+  top: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  padding: 12px 24px;
+  border-radius: 6px;
+  z-index: 5000;
+  font-size: 15px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; top: 20px; }
+  to { opacity: 1; top: 40px; }
+}
+
 .admin-page {
   width: 100%;
 }
@@ -274,6 +363,20 @@ h2 {
   border-color: #409eff;
 }
 
+.search-select {
+  padding: 8px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  font-size: 14px;
+  outline: none;
+  background-color: #fff;
+  cursor: pointer;
+}
+
+.search-select:focus {
+  border-color: #409eff;
+}
+
 .action-btn {
   padding: 10px 20px;
   font-size: 16px;
@@ -299,6 +402,22 @@ h2 {
 
 .secondary-btn {
   background: #909399;
+}
+
+.success-btn {
+  background: #67c23a;
+}
+
+.success-btn:hover {
+  background: #85ce61;
+}
+
+.danger-btn {
+  background: #f56c6c;
+}
+
+.danger-btn:hover {
+  background: #f78989;
 }
 
 .status-message {
@@ -388,18 +507,6 @@ h2 {
   font-weight: bold;
 }
 
-.status-submitted {
-  background-color: #e1f3d8;
-  color: #67c23a;
-  border: 1px solid #c2e7b0;
-}
-
-.status-unsubmitted {
-  background-color: #f4f4f5;
-  color: #909399;
-  border: 1px solid #d3d4d6;
-}
-
 .status-passed {
   background-color: #f0f9eb;
   color: #67c23a;
@@ -421,6 +528,16 @@ h2 {
 .history-body {
   padding: 16px;
   background: #fff;
+  position: relative;
+}
+
+.history-remark {
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: #606266;
+  background: #fdf6ec;
+  padding: 8px 12px;
+  border-radius: 4px;
 }
 
 .history-sql-label {
@@ -440,6 +557,13 @@ h2 {
   color: #303133;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.review-actions {
+  margin-top: 15px;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 .history-ai-section {

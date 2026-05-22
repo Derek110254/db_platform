@@ -46,6 +46,7 @@ type QueryExecuteResponse struct {
 	RowCount  int                      `json:"rowCount"`  // 返回行数
 	ElapsedMs int64                    `json:"elapsedMs"` // 执行耗时（毫秒）
 	Score     int                      `json:"score"`     // 执行计划评分
+	AuditID   int64                    `json:"auditId,omitempty"` // 审核记录ID
 }
 
 // ExecuteQueryByConnectionWithContext

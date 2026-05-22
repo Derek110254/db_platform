@@ -2,7 +2,7 @@
 /**
  * AdminUserPanel.vue
  * ------------------------------------------------------------------
- * 该组件是“连接用户管理”页面。
+ * 该组件是“用户管理”页面。
  *
  * 本版本新增：
  * 1. 用户列表增加“编辑 / 删除”按钮
@@ -334,7 +334,7 @@ onMounted(async () => {
 <template>
   <div class="admin-page">
     <div class="card form-card">
-      <h2>{{ isEditMode ? '编辑用户' : '连接用户管理' }}</h2>
+      <h2>{{ isEditMode ? '编辑用户' : '用户管理' }}</h2>
       <p class="result">{{ message }}</p>
 
       <div class="form-grid">

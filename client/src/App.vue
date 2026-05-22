@@ -8,8 +8,8 @@
  * 1. 首页（SQL 检测 / DDL 检测）
  * 2. 数据库查询页
  * 3. 管理员页面：
- *    - 连接用户管理
- *    - 数据库连接管理
+ *    - 用户管理
+ *    - 数据库管理
  * 4. 登录弹窗
  * 5. 查询历史
  * 6. SQL 收藏弹窗
@@ -32,6 +32,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AdminConnectionPanel from './components/AdminConnectionPanel.vue'
 import AdminUserPanel from './components/AdminUserPanel.vue'
+import AdminAuditPanel from './components/AdminAuditPanel.vue'
 import HomePanel from './components/HomePanel.vue'
 import LoginDialog from './components/LoginDialog.vue'
 import MetadataPanel from './components/MetadataPanel.vue'
@@ -50,7 +51,7 @@ type DBType = 'mysql' | 'oracle'
 /**
  * 页面类型
  */
-type PageType = 'home' | 'query' | 'query-plan' | 'audit-history' | 'admin-users' | 'admin-connections'
+type PageType = 'home' | 'query' | 'query-plan' | 'audit-history' | 'admin-users' | 'admin-connections' | 'admin-audits'
 
 /**
  * 当前登录用户信息
@@ -128,9 +129,10 @@ const resolvePageByPath = (): PageType => {
   const path = window.location.pathname
   if (path === '/query') return 'query'
   if (path === '/query-plan') return 'query-plan'
-  if (path === '/audit/history') return 'audit-history'
+  if (path === '/audit-history') return 'audit-history'
   if (path === '/admin/users') return 'admin-users'
   if (path === '/admin/connections') return 'admin-connections'
+  if (path === '/admin/audits') return 'admin-audits'
   return 'home'
 }
 
@@ -187,7 +189,8 @@ const hasQueryPlanPermission = computed(() => {
 /**
  * 新增：保存 AI 打分
  */
-const queryScore = ref(0) 
+const queryScore = ref(0)
+const queryAuditId = ref(0) 
 
 /**
  * 查询页状态
@@ -386,9 +389,11 @@ watch(
     if (page === 'query') {
       document.title = '数据库查询平台'
     } else if (page === 'admin-users') {
-      document.title = '连接用户管理'
+      document.title = '用户管理'
     } else if (page === 'admin-connections') {
-      document.title = '数据库连接管理'
+      document.title = '数据库管理'
+    } else if (page === 'admin-audits') {
+      document.title = 'SQL 审核管理'
     } else {
       document.title = 'SQL 综合管理平台'
     }
@@ -406,9 +411,10 @@ watch(
 const getPathByPage = (page: PageType): string => {
   if (page === 'query') return '/query'
   if (page === 'query-plan') return '/query-plan'
-  if (page === 'audit-history') return '/audit/history'
+  if (page === 'audit-history') return '/audit-history'
   if (page === 'admin-users') return '/admin/users'
   if (page === 'admin-connections') return '/admin/connections'
+  if (page === 'admin-audits') return '/admin/audits'
   return '/'
 }
 
@@ -427,7 +433,7 @@ const navigateTo = async (page: PageType) => {
     }
   }
 
-  if (page === 'admin-users' || page === 'admin-connections') {
+  if (page === 'admin-users' || page === 'admin-connections' || page === 'admin-audits') {
     const ok = await checkAuthStatus(false)
     if (!ok) {
       loginDialogVisible.value = true
@@ -477,7 +483,7 @@ const handlePopState = async () => {
     }
   }
 
-  if (targetPage === 'admin-users' || targetPage === 'admin-connections') {
+  if (targetPage === 'admin-users' || targetPage === 'admin-connections' || targetPage === 'admin-audits') {
     const ok = await checkAuthStatus(false)
     if (!ok || !isAdmin.value) {
       currentPage.value = 'home'
@@ -519,7 +525,7 @@ onMounted(async () => {
     }
   }
 
-  if (currentPage.value === 'admin-users' || currentPage.value === 'admin-connections') {
+  if (currentPage.value === 'admin-users' || currentPage.value === 'admin-connections' || currentPage.value === 'admin-audits') {
     const ok = await checkAuthStatus(false)
     if (!ok || !isAdmin.value) {
       currentPage.value = 'home'
@@ -588,6 +594,7 @@ const checkAuthStatus = async (showError = true): Promise<boolean> => {
     }
     
     if (currentUser.value.needChangePwd === 1) {
+      isForceChangePwd.value = true
       changePasswordDialogVisible.value = true
     }
     
@@ -1015,12 +1022,12 @@ const explainQuery = async () => {
     queryMessage.value = data.message || '获取执行计划完成'
     queryColumns.value = data.columns || []
     queryRows.value = data.rows || []
-    // ====== 关键修改：接收后端返回的 Score ======
-    queryScore.value = data.score || 0 
+    // ====== 关键修改：接收后端返回的 Score 和 AuditID ======
+    queryScore.value = data.score || 0
+    queryAuditId.value = data.auditId || 0
     // ========================================
 
     currentPageNo.value = 1
-
     addQueryHistory()
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
@@ -1201,6 +1208,31 @@ const scrollToTop = () => {
                 </div>
               </div>
               <div class="user-dropdown-menu">
+                <button
+                  v-if="isAdmin"
+                  class="user-dropdown-item"
+                  @click="navigateTo('admin-users')"
+                  type="button"
+                >
+                  用户管理
+                </button>
+                <button
+                  v-if="isAdmin"
+                  class="user-dropdown-item"
+                  @click="navigateTo('admin-connections')"
+                  type="button"
+                >
+                  数据库管理
+                </button>
+                <button
+                  v-if="isAdmin"
+                  class="user-dropdown-item"
+                  @click="navigateTo('admin-audits')"
+                  type="button"
+                >
+                  SQL 审核管理
+                </button>
+                <div v-if="isAdmin" class="user-dropdown-divider"></div>
                 <button class="user-dropdown-item" @click="openChangePasswordDialog" type="button">
                   修改密码
                 </button>
@@ -1253,7 +1285,7 @@ const scrollToTop = () => {
             @click="navigateTo('admin-users')"
             type="button"
           >
-            连接用户管理
+            用户管理
           </button>
 
           <button
@@ -1261,7 +1293,7 @@ const scrollToTop = () => {
             @click="navigateTo('admin-connections')"
             type="button"
           >
-            数据库连接管理
+            数据库管理
           </button>
         </template>
       </div>
@@ -1394,6 +1426,7 @@ const scrollToTop = () => {
             :loading="queryLoading"
             :query-message="queryMessage"
             :query-score="queryScore"
+            :query-audit-id="queryAuditId"
             :query-columns="queryColumns || []"
             :query-rows="queryRows || []"
             :metadata-tables="metadataTables"
@@ -1427,9 +1460,14 @@ const scrollToTop = () => {
         <AdminUserPanel />
       </template>
 
-      <!-- 管理员页面：数据库连接管理 -->
+      <!-- 管理员页面：数据库管理 -->
       <template v-else-if="currentPage === 'admin-connections'">
         <AdminConnectionPanel />
+      </template>
+
+      <!-- 管理员页面：SQL 审核管理 -->
+      <template v-else-if="currentPage === 'admin-audits'">
+        <AdminAuditPanel />
       </template>
     </div>
 
@@ -1449,7 +1487,9 @@ const scrollToTop = () => {
     <ChangePasswordDialog
       ref="changePasswordDialogRef"
       :visible="changePasswordDialogVisible"
+      :is-force="isForceChangePwd"
       @submit="handleChangePasswordSubmit"
+      @cancel="changePasswordDialogVisible = false"
     />
 
     <!-- SQL 收藏弹窗 -->

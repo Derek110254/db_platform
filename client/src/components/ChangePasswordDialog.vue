@@ -5,7 +5,7 @@
  * 首次登录强制修改密码弹窗
  */
 
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 
 const props = withDefaults(defineProps<{
   visible: boolean
@@ -58,6 +58,20 @@ const handleCancel = () => {
   }
 }
 
+const handleEsc = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && props.visible && !props.isForce) {
+    handleCancel()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleEsc)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleEsc)
+})
+
 const setMessage = (msg: string) => {
   message.value = msg
 }
@@ -70,6 +84,7 @@ defineExpose({
 <template>
   <div v-if="props.visible" class="login-mask" @click="handleCancel">
     <div class="login-dialog" @click.stop>
+      <button v-if="!props.isForce" class="close-icon-btn" @click="handleCancel" title="关闭">&times;</button>
       <h2 v-if="props.isForce">首次登录需要修改密码</h2>
       <h2 v-else>修改密码</h2>
       
@@ -141,6 +156,30 @@ defineExpose({
   border-radius: 12px;
   padding: 30px;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+  position: relative;
+}
+
+.close-icon-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  color: #909399;
+  cursor: pointer;
+  transition: color 0.2s;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-icon-btn:hover {
+  color: #f56c6c;
 }
 
 .login-dialog h2 {
@@ -205,5 +244,11 @@ defineExpose({
 }
 .primary-btn:hover {
   background: #66b1ff;
+}
+.secondary-btn {
+  background: #909399;
+}
+.secondary-btn:hover {
+  background: #a6a9ad;
 }
 </style>

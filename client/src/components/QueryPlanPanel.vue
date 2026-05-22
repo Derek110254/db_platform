@@ -9,7 +9,7 @@
  * 4. AI 深度解读展示 (置于最底部)
  */
 
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { Codemirror } from 'vue-codemirror'
 import { sql as sqlLang } from '@codemirror/lang-sql'
 import { autocompletion, type Completion, type CompletionContext } from '@codemirror/autocomplete'
@@ -75,6 +75,7 @@ const props = defineProps<{
   metadataTables: QueryMetadataTable[]
   metadataColumns: QueryMetadataColumn[]
   queryScore: number // 接收后端传来的分数
+  queryAuditId?: number // 接收后端传回的 auditId
 }>()
 
 const emit = defineEmits<{
@@ -92,8 +93,22 @@ const queryEditorView = ref<SimpleEditorView | null>(null)
 
 const isMounted = ref(false)
 onMounted(() => {
+  // Add ESC key listener for dialogs
+  window.addEventListener('keydown', handleKeydown)
   isMounted.value = true
 })
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleKeydown)
+})
+
+const handleKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') {
+    if (submitAuditDialogVisible.value) {
+      submitAuditDialogVisible.value = false
+    }
+  }
+}
 
 const metadataTableNameSet = computed(() => {
   return new Set(props.metadataTables.map((item) => item.name.toUpperCase()))
@@ -241,6 +256,67 @@ const getScoreColor = (score: number) => {
   if (score >= 70) return '#E6A23C' // 黄色
   return '#F56C6C' // 红色
 }
+
+const submitAuditDialogVisible = ref(false)
+const submittingAudit = ref(false)
+const submitAuditForm = ref({
+  submitAudit: 1,
+  remark: ''
+})
+
+const toastMessage = ref('')
+const showToast = (msg: string) => {
+  toastMessage.value = msg
+  setTimeout(() => {
+    toastMessage.value = ''
+  }, 2000)
+}
+
+const openSubmitAuditDialog = () => {
+  submitAuditForm.value.submitAudit = 1
+  submitAuditForm.value.remark = ''
+  submitAuditDialogVisible.value = true
+}
+
+const doSubmitAudit = async () => {
+  if (submitAuditForm.value.submitAudit === 5 && !submitAuditForm.value.remark.trim()) {
+    showToast('选择“其他”时，备注为必填项')
+    return
+  }
+  
+  if (!props.queryAuditId) {
+    showToast('暂无可提交的审核记录')
+    return
+  }
+
+  submittingAudit.value = true
+  try {
+    const res = await fetch('/api/audit-submit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        auditId: props.queryAuditId,
+        submitAudit: submitAuditForm.value.submitAudit,
+        remark: submitAuditForm.value.remark.trim()
+      })
+    })
+
+    const data = await res.json()
+    if (res.ok) {
+      showToast(data.message || data.msg || '提交审核成功')
+      submitAuditDialogVisible.value = false
+    } else {
+      showToast(data.error || data.message || data.msg || '提交审核失败')
+    }
+  } catch (err) {
+    console.error(err)
+    showToast('请求异常，请稍后重试')
+  } finally {
+    submittingAudit.value = false
+  }
+}
 </script>
 
 
@@ -316,6 +392,15 @@ const getScoreColor = (score: number) => {
         </button>
 
         <button
+          class="action-btn success-btn"
+          @click="openSubmitAuditDialog"
+          :disabled="props.loading || !props.queryAuditId"
+          type="button"
+        >
+          提交审核
+        </button>
+
+        <button
           class="action-btn danger-main-btn"
           @click="emit('cancel')"
           :disabled="!props.loading"
@@ -330,6 +415,44 @@ const getScoreColor = (score: number) => {
       </div>
 
       <div class="query-panel-bottom-space"></div>
+    </div>
+
+    <!-- 提交审核弹窗 -->
+    <div class="dialog-overlay" v-if="submitAuditDialogVisible">
+      <div class="dialog-content">
+        <div class="dialog-header">
+          <h3>提交 SQL 审核</h3>
+          <button class="close-icon-btn" @click="submitAuditDialogVisible = false" type="button">
+            &times;
+          </button>
+        </div>
+        <div class="dialog-body">
+          <div class="form-item">
+            <label>审核理由</label>
+            <select v-model="submitAuditForm.submitAudit">
+              <option :value="1">面向交易</option>
+              <option :value="2">面向用户</option>
+              <option :value="3">后台配置</option>
+              <option :value="4">报表生成</option>
+              <option :value="5">其他</option>
+            </select>
+          </div>
+          <div class="form-item" v-if="submitAuditForm.submitAudit === 5">
+            <label>备注 (必填)</label>
+            <input type="text" v-model="submitAuditForm.remark" placeholder="请输入审核备注原因" />
+          </div>
+          <div class="form-item" v-else>
+            <label>备注 (选填)</label>
+            <input type="text" v-model="submitAuditForm.remark" placeholder="可在此输入更多信息" />
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button class="dialog-btn cancel-btn" @click="submitAuditDialogVisible = false">取消</button>
+          <button class="dialog-btn confirm-btn" @click="doSubmitAudit" :disabled="submittingAudit">
+            {{ submittingAudit ? '提交中...' : '确认提交' }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- 执行计划与 AI 解析结果框 -->
@@ -375,10 +498,35 @@ const getScoreColor = (score: number) => {
 
       </div>
     </Teleport>
+
+    <!-- Toast 提示框 -->
+    <div v-if="toastMessage" class="toast-message">
+      {{ toastMessage }}
+    </div>
   </div>
 </template>
 
 <style scoped>
+.toast-message {
+  position: fixed;
+  top: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  padding: 12px 24px;
+  border-radius: 6px;
+  z-index: 5000;
+  font-size: 15px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; top: 20px; }
+  to { opacity: 1; top: 40px; }
+}
+
 .query-plan-panel-root {
   display: flex;
   flex-direction: column;
@@ -645,6 +793,136 @@ select {
 }
 
 .danger-main-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.success-btn {
+  background: #67c23a;
+}
+
+.success-btn:hover {
+  background: #85ce61;
+}
+
+.success-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 提交审核弹窗样式 */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+}
+
+.dialog-content {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  background: #fff;
+  border-radius: 12px;
+  padding: 30px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+  box-sizing: border-box;
+  position: relative;
+}
+
+.close-icon-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  color: #909399;
+  cursor: pointer;
+  transition: color 0.2s;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-icon-btn:hover {
+  color: #f56c6c;
+}
+
+.dialog-header h3 {
+  margin-top: 0;
+  color: #2c3e50;
+  margin-bottom: 20px;
+}
+
+.dialog-body {
+  margin-bottom: 20px;
+}
+
+.dialog-body .form-item {
+  margin-bottom: 16px;
+}
+
+.dialog-body .form-item input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 16px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #fff;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.dialog-body .form-item input:focus,
+.dialog-body .form-item select:focus {
+  outline: none;
+  border-color: #409eff;
+}
+
+.dialog-footer {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+.dialog-btn {
+  padding: 12px 30px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  width: 100%;
+  transition: background 0.2s;
+}
+
+.cancel-btn {
+  background: #909399;
+}
+
+.cancel-btn:hover {
+  background: #a6a9ad;
+}
+
+.confirm-btn {
+  background: #409eff;
+}
+
+.confirm-btn:hover {
+  background: #66b1ff;
+}
+
+.confirm-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
