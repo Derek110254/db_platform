@@ -67,22 +67,34 @@ type ddlTable struct {
 	Engine          string
 	Charset         string
 	Raw             string
+	IsPartial       bool // [新增] 标记是否为仅通过 ALTER 提取的局部表信息
 }
 
 // 这一组正则表达式用于识别项目当前支持的核心 DDL 形式。
 // 由于目标是静态规范检查而非完整语法解析，所以这里重点覆盖 CREATE TABLE、CREATE INDEX、COMMENT ON、ALTER TABLE ADD PRIMARY KEY 等场景。
 var (
-	reCreateTable = regexp.MustCompile(`(?is)^\s*CREATE\s+TABLE\s+([a-zA-Z0-9_.$"` + "`" + `]+)\s*\((.*)\)\s*(.*)$`)
+	//reCreateTable = regexp.MustCompile(`(?is)^\s*CREATE\s+TABLE\s+([a-zA-Z0-9_.$"` + "`" + `]+)\s*\((.*)\)\s*(.*)$`)
+	reCreateTable = regexp.MustCompile(`(?is)^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_.$"` + "`" + `]+)\s*\((.*)\)\s*(.*)$`)
 
-	reCreateIndex = regexp.MustCompile(`(?is)^\s*CREATE\s+(UNIQUE\s+)?INDEX\s+([a-zA-Z0-9_.$"` + "`" + `]+)\s+ON\s+([a-zA-Z0-9_.$"` + "`" + `]+)\s*\(([^)]*)\)\s*;?\s*$`)
+	//reCreateIndex = regexp.MustCompile(`(?is)^\s*CREATE\s+(UNIQUE\s+)?INDEX\s+([a-zA-Z0-9_.$"` + "`" + `]+)\s+ON\s+([a-zA-Z0-9_.$"` + "`" + `]+)\s*\(([^)]*)\)\s*;?\s*$`)
+	reCreateIndex = regexp.MustCompile(`(?is)^\s*CREATE\s+(UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_.$"` + "`" + `]+)\s+ON\s+([a-zA-Z0-9_.$"` + "`" + `]+)\s*\(([^)]*)\)\s*;?\s*$`)
+
+	reCreateTableAs = regexp.MustCompile(`(?is)^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_.$"` + "`" + `]+)\s+AS\s+SELECT\s+.*$`)
 
 	reCommentTable = regexp.MustCompile(`(?is)^\s*COMMENT\s+ON\s+TABLE\s+([a-zA-Z0-9_.$"` + "`" + `]+)\s+IS\s+'[\s\S]*?'\s*;?\s*$`)
 
-	reCommentColumn = regexp.MustCompile(`(?is)^\s*COMMENT\s+ON\s+COLUMN\s+([a-zA-Z0-9_.$"` + "`" + `]+)\.([a-zA-Z0-9_.$"` + "`" + `]+)\s+IS\s+'[\s\S]*?'\s*;?\s*$`)
+	//reCommentColumn = regexp.MustCompile(`(?is)^\s*COMMENT\s+ON\s+COLUMN\s+([a-zA-Z0-9_.$"` + "`" + `]+)\.([a-zA-Z0-9_.$"` + "`" + `]+)\s+IS\s+'[\s\S]*?'\s*;?\s*$`)
+	// [修改] 给 '[\s\S]*?' 加上括号变成 '([\s\S]*?)'，用于提取具体的注释内容
+	reCommentColumn = regexp.MustCompile(`(?is)^\s*COMMENT\s+ON\s+COLUMN\s+([a-zA-Z0-9_.$"` + "`" + `]+)\.([a-zA-Z0-9_.$"` + "`" + `]+)\s+IS\s+'([\s\S]*?)'\s*;?\s*$`)
 
-	reAlterTablePrimaryKey = regexp.MustCompile(`(?is)^\s*ALTER\s+TABLE\s+([a-zA-Z0-9_.$"` + "`" + `]+)\s+ADD\s+CONSTRAINT\s+([a-zA-Z0-9_.$"` + "`" + `]+)\s+PRIMARY\s+KEY\s*\(([^)]*)\)(?:[\s\S]*?)?;?\s*$`)
+	//reAlterTablePrimaryKey = regexp.MustCompile(`(?is)^\s*ALTER\s+TABLE\s+([a-zA-Z0-9_.$"` + "`" + `]+)\s+ADD\s+CONSTRAINT\s+([a-zA-Z0-9_.$"` + "`" + `]+)\s+PRIMARY\s+KEY\s*\(([^)]*)\)(?:[\s\S]*?)?;?\s*$`)
+	reAlterTablePrimaryKey = regexp.MustCompile(`(?is)^\s*ALTER\s+TABLE\s+([a-zA-Z0-9_.$"` + "`" + `]+)\s+ADD\s+(?:CONSTRAINT\s+([a-zA-Z0-9_.$"` + "`" + `]+)\s+)?PRIMARY\s+KEY\s*\(([^)]*)\)(?:[\s\S]*?)?;?\s*$`)
+
+	reAlterTableColumn = regexp.MustCompile(`(?is)^\s*ALTER\s+TABLE\s+([a-zA-Z0-9_.$"` + "`" + `]+)\s+(ADD|MODIFY|CHANGE)\s+(?:COLUMN\s+)?(.*)$`)
 
 	reReserved = regexp.MustCompile(`^(ACCESS|ADD|ALL|ALTER|AND|ANY|AS|ASC|AUDIT|BETWEEN|BY|CHAR|CHECK|CLUSTER|COLUMN|COMMENT|COMPRESS|CONNECT|CREATE|CURRENT|DATE|DECIMAL|DEFAULT|DELETE|DESC|DISTINCT|DROP|ELSE|EXCLUSIVE|EXISTS|FILE|FLOAT|FOR|FROM|GRANT|GROUP|HAVING|IDENTIFIED|IMMEDIATE|IN|INCREMENT|INDEX|INITIAL|INSERT|INTEGER|INTERSECT|INTO|IS|LEVEL|LIKE|LOCK|LONG|MAXEXTENTS|MINUS|MLSLABEL|MODE|MODIFY|NOAUDIT|NOCOMPRESS|NOT|NOWAIT|NULL|NUMBER|OF|OFFLINE|ON|ONLINE|OPTION|OR|ORDER|PCTFREE|PRIOR|PRIVILEGES|PUBLIC|RAW|RENAME|RESOURCE|REVOKE|ROW|ROWID|ROWNUM|ROWS|SELECT|SESSION|SET|SHARE|SIZE|SMALLINT|START|SUCCESSFUL|SYNONYM|SYSDATE|TABLE|THEN|TO|TRIGGER|UID|UNION|UNIQUE|UPDATE|USER|VALIDATE|VALUES|VARCHAR|VARCHAR2|VIEW|WHENEVER|WHERE|WITH)$`)
+
+	reBlockComment = regexp.MustCompile(`(?is)/\*.*?\*/`)
 )
 
 // CheckDDL 是 DDL 合规性检查统一入口。
@@ -144,7 +156,17 @@ func CheckDDL(dbType string, rawSQL string) DDLCheckResponse {
 		if m := reCommentColumn.FindStringSubmatch(raw); len(m) > 0 {
 			tableName := strings.ToUpper(cleanIdentifier(m[1]))
 			colName := strings.ToUpper(cleanIdentifier(m[2]))
+			commentText := m[3] // [新增] 提取出注释文本
 			commentedColumns[tableName+"."+colName] = true
+			// [新增] 根据提取出来的单独注释内容，反向修正表的 HasCreateTime / HasUpdateTime 状态
+			if t, ok := tableMap[tableName]; ok {
+				if strings.Contains(commentText, "创建时间") || strings.Contains(commentText, "插入时间") {
+					t.HasCreateTime = true
+				}
+				if strings.Contains(commentText, "更新时间") {
+					t.HasUpdateTime = true
+				}
+			}
 			continue
 		}
 
@@ -156,6 +178,67 @@ func CheckDDL(dbType string, rawSQL string) DDLCheckResponse {
 				tableMap[tableName] = &ddlTable{
 					Name:          cleanIdentifier(m[1]),
 					HasPrimaryKey: true,
+					IsPartial:     true, // [新增] 标记这是一个局部表，跳过全表检查
+				}
+			}
+			continue
+		}
+
+		// [新增] 提取 ALTER TABLE ADD / MODIFY / CHANGE 的字段
+		if m := reAlterTableColumn.FindStringSubmatch(raw); len(m) > 0 {
+			tableName := strings.ToUpper(cleanIdentifier(m[1]))
+			action := strings.ToUpper(m[2]) // ADD, MODIFY, CHANGE
+			body := strings.TrimSpace(m[3])
+			// if strings.HasSuffix(body, ";") {
+			// 	body = body[:len(body)-1]
+			// }
+			body = strings.TrimSuffix(body, ";")
+
+			// 排除约束、索引等非纯字段的操作
+			upperBody := strings.ToUpper(body)
+			if strings.HasPrefix(upperBody, "CONSTRAINT") || strings.HasPrefix(upperBody, "INDEX") || strings.HasPrefix(upperBody, "UNIQUE") || strings.HasPrefix(upperBody, "PRIMARY") {
+				continue
+			}
+
+			var items []string
+			// 处理带括号的多个字段：ALTER TABLE t ADD (col1 INT, col2 INT)
+			if strings.HasPrefix(body, "(") && strings.HasSuffix(body, ")") {
+				items = splitDDLItems(body[1 : len(body)-1])
+			} else {
+				items = []string{body}
+			}
+
+			var newCols []ddlColumn
+			for _, item := range items {
+				trimmed := strings.TrimSpace(item)
+				if trimmed == "" {
+					continue
+				}
+
+				colName := extractLeadingIdentifier(trimmed)
+				// CHANGE 语法比较特殊: CHANGE old_col new_col type
+				if action == "CHANGE" {
+					fields := strings.Fields(trimmed)
+					if len(fields) >= 2 {
+						colName = fields[1]
+					}
+				}
+
+				if colName != "" {
+					newCols = append(newCols, ddlColumn{Name: cleanIdentifier(colName), Raw: trimmed})
+				}
+			}
+
+			if len(newCols) > 0 {
+				if t, ok := tableMap[tableName]; ok {
+					t.Columns = append(t.Columns, newCols...)
+				} else {
+					// 创建局部表结构
+					tableMap[tableName] = &ddlTable{
+						Name:      cleanIdentifier(m[1]),
+						Columns:   newCols,
+						IsPartial: true,
+					}
 				}
 			}
 			continue
@@ -167,8 +250,9 @@ func CheckDDL(dbType string, rawSQL string) DDLCheckResponse {
 				t.Indexes = append(t.Indexes, idx)
 			} else {
 				tableMap[tableName] = &ddlTable{
-					Name:    idx.TableName,
-					Indexes: []ddlIndex{idx},
+					Name:      idx.TableName,
+					Indexes:   []ddlIndex{idx},
+					IsPartial: true, // [新增] 标记这是一个局部表，跳过全表检查
 				}
 			}
 			continue
@@ -242,6 +326,23 @@ func mergeDDLTable(dst *ddlTable, src ddlTable) {
 	dst.HasUpdateTime = dst.HasUpdateTime || src.HasUpdateTime
 	dst.HasTableComment = dst.HasTableComment || src.HasTableComment
 	dst.HasForeignKey = dst.HasForeignKey || src.HasForeignKey
+
+	// [修改处] 如果旧对象是局部表，新对象是完整建表，需要覆盖并消除 Partial 标记
+	if dst.IsPartial && !src.IsPartial {
+		dst.IsPartial = false
+		dst.HasPrimaryKey = src.HasPrimaryKey
+		dst.HasCreateTime = src.HasCreateTime
+		dst.HasUpdateTime = src.HasUpdateTime
+		dst.HasTableComment = src.HasTableComment
+		dst.HasForeignKey = src.HasForeignKey
+	} else {
+		dst.HasPrimaryKey = dst.HasPrimaryKey || src.HasPrimaryKey
+		dst.HasCreateTime = dst.HasCreateTime || src.HasCreateTime
+		dst.HasUpdateTime = dst.HasUpdateTime || src.HasUpdateTime
+		dst.HasTableComment = dst.HasTableComment || src.HasTableComment
+		dst.HasForeignKey = dst.HasForeignKey || src.HasForeignKey
+	}
+
 	if dst.Engine == "" {
 		dst.Engine = src.Engine
 	}
@@ -316,50 +417,52 @@ func checkTableRules(db DBType, table ddlTable, commentedColumns map[string]bool
 	issues := make([]DDLIssue, 0)
 	upperTable := strings.ToUpper(table.Name)
 
-	if len([]rune(table.Name)) > 30 {
-		issues = append(issues, newIssue(1, DDLSeverityError, "table", upperTable, "表名应使用小写下划线命名，且长度不超过 30 个字符", "例如 order_item、user_profile；表名请控制在 30 个字符以内，避免使用数据库关键字和保留字", "table_name_length_rule"))
-	} else if !isLowerSnake(table.Name) {
-		issues = append(issues, newIssue(1, DDLSeverityError, "table", upperTable, "表名应使用小写下划线命名", "例如 order_item、user_profile", "table_name_format_rule"))
-	} else if isReservedWord(table.Name) {
-		issues = append(issues, newIssue(1, DDLSeverityError, "table", upperTable, "表名应避免数据库关键字和保留字", "例如 order_item、user_profile，避免直接使用 order、group、user 等关键字", "table_reserved_word_rule"))
-	}
-
-	if !table.HasPrimaryKey {
-		issues = append(issues, newIssue(1, DDLSeverityError, "table", upperTable, "表缺少主键", "请为表增加主键，例如 CONSTRAINT pk_xxx PRIMARY KEY (id)", "table_primary_key_required"))
-	}
-
-	if !table.HasCreateTime {
-		issues = append(issues, newIssue(1, DDLSeverityWarning, "table", upperTable, "表缺少 create_time 字段", "建议增加 create_time 字段，用于记录创建时间", "table_create_time_required"))
-	}
-	if !table.HasUpdateTime {
-		issues = append(issues, newIssue(1, DDLSeverityWarning, "table", upperTable, "表缺少 update_time 字段", "建议增加 update_time 字段，用于记录更新时间", "table_update_time_required"))
-	}
-
-	if db == MySQL && !table.HasTableComment {
-		issues = append(issues, newIssue(1, DDLSeverityError, "table", upperTable, "表缺少注释", "请在建表语句末尾补充 COMMENT='...'", "mysql_table_comment_required"))
-	}
-
-	if db == Oracle {
-		if !table.HasTableComment {
-			issues = append(issues, newIssue(1, DDLSeverityError, "table", upperTable, "表缺少注释", fmt.Sprintf("请补充：COMMENT ON TABLE %s IS '...';", table.Name), "oracle_table_comment_required"))
+	// [新增包裹] 跳过仅针对完整建表语句的表级结构检查 (比如由 ALTER TABLE 或 CTAS 提取的局部表)
+	if !table.IsPartial {
+		if len([]rune(table.Name)) > 30 {
+			// 去掉了报错文案里的“使用小写下划线命名”，只保留长度提示
+			issues = append(issues, newIssue(1, DDLSeverityError, "table", upperTable, "表名长度不应超过 30 个字符", "表名请控制在 30 个字符以内，避免使用数据库关键字和保留字", "table_name_length_rule"))
+		} else if isReservedWord(table.Name) {
+			issues = append(issues, newIssue(1, DDLSeverityError, "table", upperTable, "表名应避免数据库关键字和保留字", "避免直接使用 order、group、user 等关键字", "table_reserved_word_rule"))
 		}
-		if table.HasForeignKey {
-			issues = append(issues, newIssue(1, DDLSeverityWarning, "table", upperTable, "避免使用外键，容易锁表", "建议通过应用逻辑或程序校验保持数据一致性", "oracle_avoid_foreign_key"))
+		if !table.HasPrimaryKey {
+			issues = append(issues, newIssue(1, DDLSeverityError, "table", upperTable, "表缺少主键", "请为表增加主键，例如 CONSTRAINT pk_xxx PRIMARY KEY (id)", "table_primary_key_required"))
 		}
-		if len(table.Indexes) > 5 {
-			issues = append(issues, newIssue(1, DDLSeverityWarning, "table", upperTable, "单表上的索引建议不超过5个", "请评估索引必要性，避免过多索引影响写入性能", "oracle_index_count_limit"))
-		}
-	}
 
-	if db == MySQL {
-		if strings.ToUpper(table.Engine) != "INNODB" {
-			issues = append(issues, newIssue(1, DDLSeverityError, "table", upperTable, "MySQL 表必须使用 InnoDB 存储引擎", "请在建表语句中指定 ENGINE=InnoDB", "mysql_engine_rule"))
+		if !table.HasCreateTime {
+			issues = append(issues, newIssue(1, DDLSeverityWarning, "table", upperTable, "表缺少 create_time 字段", "建议增加 create_time 字段，用于记录创建时间", "table_create_time_required"))
 		}
-		if strings.ToLower(table.Charset) != "utf8mb4" {
-			issues = append(issues, newIssue(1, DDLSeverityError, "table", upperTable, "MySQL 表必须使用 utf8mb4 字符集", "请在建表语句中指定 DEFAULT CHARSET=utf8mb4", "mysql_charset_rule"))
+		if !table.HasUpdateTime {
+			issues = append(issues, newIssue(1, DDLSeverityWarning, "table", upperTable, "表缺少 update_time 字段", "建议增加 update_time 字段，用于记录更新时间", "table_update_time_required"))
 		}
-	}
 
+		if db == MySQL && !table.HasTableComment {
+			issues = append(issues, newIssue(1, DDLSeverityError, "table", upperTable, "表缺少注释", "请在建表语句末尾补充 COMMENT='...'", "mysql_table_comment_required"))
+		}
+
+		if db == Oracle {
+			if !table.HasTableComment {
+				issues = append(issues, newIssue(1, DDLSeverityError, "table", upperTable, "表缺少注释", fmt.Sprintf("请补充：COMMENT ON TABLE %s IS '...';", table.Name), "oracle_table_comment_required"))
+			}
+			if table.HasForeignKey {
+				issues = append(issues, newIssue(1, DDLSeverityWarning, "table", upperTable, "避免使用外键，容易锁表", "建议通过应用逻辑或程序校验保持数据一致性", "oracle_avoid_foreign_key"))
+			}
+			if len(table.Indexes) > 5 {
+				issues = append(issues, newIssue(1, DDLSeverityWarning, "table", upperTable, "单表上的索引建议不超过5个", "请评估索引必要性，避免过多索引影响写入性能", "oracle_index_count_limit"))
+			}
+		}
+
+		if db == MySQL {
+			if strings.ToUpper(table.Engine) != "INNODB" {
+				issues = append(issues, newIssue(1, DDLSeverityError, "table", upperTable, "MySQL 表必须使用 InnoDB 存储引擎", "请在建表语句中指定 ENGINE=InnoDB", "mysql_engine_rule"))
+			}
+			if strings.ToLower(table.Charset) != "utf8mb4" {
+				issues = append(issues, newIssue(1, DDLSeverityError, "table", upperTable, "MySQL 表必须使用 utf8mb4 字符集", "请在建表语句中指定 DEFAULT CHARSET=utf8mb4", "mysql_charset_rule"))
+			}
+		}
+	} // [包裹结束]
+
+	// ======= 字段级检查 (完整建表和 ALTER 增量字段均生效) =======
 	for _, col := range table.Columns {
 		upperCol := strings.ToUpper(col.Name)
 		colUpperRaw := strings.ToUpper(col.Raw)
@@ -406,6 +509,7 @@ func checkTableRules(db DBType, table ddlTable, commentedColumns map[string]bool
 		}
 	}
 
+	// ======= 索引级检查 (完整建表和 ADD INDEX 均生效) =======
 	issues = append(issues, checkIndexNamingRules(table.Indexes)...)
 	issues = append(issues, redundantIndexIssues(table.Indexes)...)
 
@@ -508,12 +612,18 @@ func parseCreateTable(stmt SQLStatement) (ddlTable, bool) {
 		result.Columns = append(result.Columns, col)
 
 		lname := strings.ToLower(col.Name)
-		if lname == "create_time" {
+
+		// [修改] 放宽判断条件：匹配常见英文名，或者原始 SQL（Raw）中包含目标中文注释
+		if lname == "create_time" || lname == "created_at" || lname == "gmt_create" ||
+			strings.Contains(trimmed, "创建时间") || strings.Contains(trimmed, "插入时间") {
 			result.HasCreateTime = true
 		}
-		if lname == "update_time" {
+
+		if lname == "update_time" || lname == "updated_at" || lname == "gmt_modified" ||
+			strings.Contains(trimmed, "更新时间") {
 			result.HasUpdateTime = true
 		}
+
 		if strings.Contains(strings.ToUpper(trimmed), "PRIMARY KEY") {
 			result.HasPrimaryKey = true
 		}
@@ -727,6 +837,8 @@ func isReservedWord(name string) bool {
 }
 
 func stripLineComments(sql string) string {
+	sql = reBlockComment.ReplaceAllString(sql, "")
+
 	lines := strings.Split(sql, "\n")
 	out := make([]string, 0, len(lines))
 	for _, line := range lines {

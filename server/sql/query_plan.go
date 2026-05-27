@@ -17,6 +17,18 @@ import (
 	"sql_platform/server/config"
 )
 
+/*
+query_plan.go
+----------------------------------------------------------------------
+该文件负责获取数据库的执行计划，并调用 AI（通义千问）进行深度解读。
+
+主要功能：
+1. 根据用户权限校验数据库连接访问权。
+2. 支持 MySQL、PostgreSQL 和 Oracle 数据库的执行计划获取（屏蔽写操作）。
+3. 调用通义千问 API 解读执行计划，给出优化建议及 SQL 性能评分。
+4. 记录 SQL 执行审计日志。
+*/
+
 // --- Qwen API 相关的结构体定义 ---
 
 // QwenRequest 对应通义千问 DashScope 的标准请求格式
@@ -59,8 +71,18 @@ type SqlAuditRecord struct {
 
 // --- 核心逻辑函数 ---
 
-// ExplainQueryByConnectionWithContext
-// 获取 SQL 执行计划并调用 AI (通义千问) 进行深度解读
+/*
+ExplainQueryByConnectionWithContext
+获取 SQL 执行计划并调用 AI (通义千问) 进行深度解读
+
+执行流程：
+1. 校验当前用户是否具有目标连接的访问权限。
+2. 拦截非查询类语句，防止越权执行写操作。
+3. 根据不同的数据库类型（Oracle、MySQL、PostgreSQL）构造并执行 EXPLAIN 获取原始执行计划。
+4. 将原始执行计划文本化，并调用大模型进行解读。
+5. 保存执行的 SQL 和 AI 的分析建议及打分到审计日志中。
+*/
+
 func ExplainQueryByConnectionWithContext(
 	ctx context.Context,
 	userID int64,
@@ -156,7 +178,7 @@ func ExplainQueryByConnectionWithContext(
 	return QueryExecuteResponse{
 		OK:        true,
 		Message:   aiInterpretation,
-		Score:     score, // 传回分数
+		Score:     score,   // 传回分数
 		AuditID:   auditID, // 新增传回 AuditID
 		Columns:   rawResult.Columns,
 		Rows:      rawResult.Rows,

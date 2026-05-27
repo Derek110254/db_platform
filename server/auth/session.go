@@ -210,6 +210,37 @@ CREATE TABLE IF NOT EXISTS platform_sql_audit (
 	KEY idx_sql_digest (sql_digest)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='SQL AI审核记录表';
 `
+
+	// 新增：数据库变更申请表
+	createDbChangeRequestTable := `
+CREATE TABLE IF NOT EXISTS platform_db_change_request (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    applicant VARCHAR(64) NOT NULL DEFAULT '' COMMENT '申请人',
+    applicant_team VARCHAR(128) NOT NULL DEFAULT '' COMMENT '申请团队',
+    planned_change_time DATETIME NOT NULL COMMENT '计划变更时间',
+    urgency_level VARCHAR(16) NOT NULL DEFAULT '常规' COMMENT '紧急程度（常规，紧急）',
+    test_publisher VARCHAR(64) NOT NULL DEFAULT '' COMMENT '测试线发布人',
+    prod_publisher VARCHAR(64) NOT NULL DEFAULT '' COMMENT '生产线发布人',
+    change_type VARCHAR(64) NOT NULL DEFAULT '' COMMENT '变更类型（新建表，修改表结构，数据修改，数据同步，其他）',
+    change_reason VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '变更原因',
+    requirement_url VARCHAR(512) NOT NULL DEFAULT '' COMMENT '需求url',
+    impact_scope VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '影响范围',
+    db_type VARCHAR(32) NOT NULL DEFAULT '' COMMENT '数据库类型（oracle mysql redis 其他）',
+    test_db_ip VARCHAR(128) NOT NULL DEFAULT '' COMMENT '测试线数据库IP',
+    test_db_name VARCHAR(32) NOT NULL DEFAULT '' COMMENT '测试线数据库名',
+    test_db_schema VARCHAR(128) NOT NULL DEFAULT '' COMMENT '测试线数据库schema',
+    db_ip VARCHAR(128) NOT NULL DEFAULT '' COMMENT '数据库IP',
+    db_name VARCHAR(32) NOT NULL DEFAULT '' COMMENT '数据库名',
+    db_schema VARCHAR(128) NOT NULL DEFAULT '' COMMENT '数据库schema',
+    change_content LONGTEXT COMMENT '变更内容',
+    release_verifier VARCHAR(64) NOT NULL DEFAULT '' COMMENT '发布验证人',
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_platform_db_change_request_applicant (applicant),
+    KEY idx_platform_db_change_request_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据库变更申请表';
+`
 	for _, stmt := range []string{
 		createUserTable,
 		createSessionTable,
@@ -217,6 +248,7 @@ CREATE TABLE IF NOT EXISTS platform_sql_audit (
 		createUserConnectionTable,
 		createSQLFavoriteTable,
 		createSqlAuditTable,
+		createDbChangeRequestTable,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			return err

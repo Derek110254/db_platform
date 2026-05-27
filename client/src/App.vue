@@ -42,6 +42,8 @@ import QueryPlanPanel from './components/QueryPlanPanel.vue'
 import SqlFavoritePanel from './components/SqlFavoritePanel.vue'
 import AuditHistoryPanel from './components/AuditHistoryPanel.vue'
 import ChangePasswordDialog from './components/ChangePasswordDialog.vue'
+import DbChangeRequestPanel from './components/DbChangeRequestPanel.vue'
+import AdminDbChangeReleasePanel from './components/AdminDbChangeReleasePanel.vue'
 
 /**
  * 数据库类型
@@ -51,7 +53,7 @@ type DBType = 'mysql' | 'oracle'
 /**
  * 页面类型
  */
-type PageType = 'home' | 'query' | 'query-plan' | 'audit-history' | 'admin-users' | 'admin-connections' | 'admin-audits'
+type PageType = 'home' | 'query' | 'query-plan' | 'audit-history' | 'admin-users' | 'admin-connections' | 'admin-audits' | 'db-change-requests' | 'admin-db-change-release'
 
 /**
  * 当前登录用户信息
@@ -394,6 +396,10 @@ watch(
       document.title = '数据库管理'
     } else if (page === 'admin-audits') {
       document.title = 'SQL 审核管理'
+    } else if (page === 'db-change-requests') {
+      document.title = '数据库变更申请'
+    } else if (page === 'admin-db-change-release') {
+      document.title = '发布验证管理'
     } else {
       document.title = 'SQL 综合管理平台'
     }
@@ -412,9 +418,11 @@ const getPathByPage = (page: PageType): string => {
   if (page === 'query') return '/query'
   if (page === 'query-plan') return '/query-plan'
   if (page === 'audit-history') return '/audit-history'
+  if (page === 'db-change-requests') return '/db-change-requests'
   if (page === 'admin-users') return '/admin/users'
   if (page === 'admin-connections') return '/admin/connections'
   if (page === 'admin-audits') return '/admin/audits'
+  if (page === 'admin-db-change-release') return '/admin/db-change-release'
   return '/'
 }
 
@@ -422,7 +430,7 @@ const getPathByPage = (page: PageType): string => {
  * 页面跳转
  */
 const navigateTo = async (page: PageType) => {
-  if (page === 'query' || page === 'query-plan') {
+  if (page === 'query' || page === 'query-plan' || page === 'db-change-requests') {
     const ok = await checkAuthStatus(false)
     if (!ok) {
       loginDialogVisible.value = true
@@ -433,7 +441,7 @@ const navigateTo = async (page: PageType) => {
     }
   }
 
-  if (page === 'admin-users' || page === 'admin-connections' || page === 'admin-audits') {
+  if (page === 'admin-users' || page === 'admin-connections' || page === 'admin-audits' || page === 'admin-db-change-release') {
     const ok = await checkAuthStatus(false)
     if (!ok) {
       loginDialogVisible.value = true
@@ -1232,6 +1240,14 @@ const scrollToTop = () => {
                 >
                   SQL 审核管理
                 </button>
+                <button
+                  v-if="isAdmin"
+                  class="user-dropdown-item"
+                  @click="navigateTo('admin-db-change-release')"
+                  type="button"
+                >
+                  发布验证管理
+                </button>
                 <div v-if="isAdmin" class="user-dropdown-divider"></div>
                 <button class="user-dropdown-item" @click="openChangePasswordDialog" type="button">
                   修改密码
@@ -1277,6 +1293,15 @@ const scrollToTop = () => {
           type="button"
         >
           SQL 性能检测
+        </button>
+
+        <button
+          v-if="isAuthenticated"
+          :class="['nav-btn', currentPage === 'db-change-requests' ? 'active' : '']"
+          @click="navigateTo('db-change-requests')"
+          type="button"
+        >
+          数据库变更申请
         </button>
 
         <template v-if="isAdmin">
@@ -1455,6 +1480,11 @@ const scrollToTop = () => {
         <AuditHistoryPanel />
       </template>
 
+      <!-- 数据库变更申请页 -->
+      <template v-else-if="currentPage === 'db-change-requests'">
+        <DbChangeRequestPanel />
+      </template>
+
       <!-- 管理员页面：用户管理 -->
       <template v-else-if="currentPage === 'admin-users'">
         <AdminUserPanel />
@@ -1468,6 +1498,11 @@ const scrollToTop = () => {
       <!-- 管理员页面：SQL 审核管理 -->
       <template v-else-if="currentPage === 'admin-audits'">
         <AdminAuditPanel />
+      </template>
+
+      <!-- 管理员页面：发布验证管理 -->
+      <template v-else-if="currentPage === 'admin-db-change-release'">
+        <AdminDbChangeReleasePanel />
       </template>
     </div>
 

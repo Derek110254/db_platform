@@ -14,6 +14,7 @@ import (
 	"sql_platform/server/routes"
 
 	"github.com/gin-gonic/gin"
+	"gopkg.in/natefinch/lumberjack.v2" // 新增的日志轮转库
 )
 
 //go:embed web/dist/**
@@ -34,11 +35,12 @@ func main() {
 		panic(fmt.Sprintf("初始化认证数据库失败: %v", err))
 	}
 
-	accessLogger, accessLogFile, err := newAccessLogger()
+	// 初始化访问日志记录器
+	accessLogger, accessLogWriter, err := newAccessLogger()
 	if err != nil {
 		panic(err)
 	}
-	defer accessLogFile.Close()
+	defer accessLogWriter.Close()
 
 	r := gin.New()
 
@@ -73,22 +75,28 @@ func main() {
 
 // newAccessLogger
 // ------------------------------------------------------------
-// 创建访问日志记录器。
+// 创建访问日志记录器，支持按天轮转和保留 14 天。
 // 日志文件路径：logs/access.log
-func newAccessLogger() (*log.Logger, *os.File, error) {
+func newAccessLogger() (*log.Logger, io.WriteCloser, error) {
 	logDir := "logs"
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		return nil, nil, err
 	}
 
 	logPath := filepath.Join(logDir, "access.log")
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		return nil, nil, err
+
+	// 引入 lumberjack 实现日志按天轮转与清理
+	logWriter := &lumberjack.Logger{
+		Filename:   logPath,
+		MaxSize:    100,  // 单个日志文件最大尺寸（MB），达到 100MB 也会触发切割
+		MaxAge:     14,   // 保留旧文件的最大天数（保留 14 天）
+		MaxBackups: 0,    // 保留的最大旧文件数量（0 表示仅靠 MaxAge 控制，不限制个数）
+		LocalTime:  true, // 备份文件名使用本地时间
+		Compress:   true, // 压缩旧的日志文件（推荐开启，节省磁盘空间）
 	}
 
-	logger := log.New(io.Writer(logFile), "", 0)
-	return logger, logFile, nil
+	logger := log.New(logWriter, "", 0)
+	return logger, logWriter, nil
 }
 
 // accessLogMiddleware

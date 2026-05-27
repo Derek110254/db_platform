@@ -167,6 +167,66 @@ type SQLFavoriteDeleteRequest struct {
 	ID int64 `json:"id"`
 }
 
+// DBChangeRequestCreateReq
+// ----------------------------------------------------------------------
+// 新增数据库变更申请请求
+type DBChangeRequestCreateReq struct {
+	ApplicantTeam     string `json:"applicantTeam" binding:"required"`
+	PlannedChangeTime string `json:"plannedChangeTime" binding:"required"`
+	UrgencyLevel      string `json:"urgencyLevel" binding:"required"`
+	ChangeType        string `json:"changeType" binding:"required"`
+	ChangeReason      string `json:"changeReason" binding:"required"`
+	RequirementUrl    string `json:"requirementUrl"`
+	ImpactScope       string `json:"impactScope"`
+	DbType            string `json:"dbType" binding:"required"`
+	TestDbIp          string `json:"TestDbIp" binding:"required"`
+	TestDbName        string `json:"TestDbName"`
+	TestDbSchema      string `json:"TestDbSchema"`
+	DbIp              string `json:"dbIp" binding:"required"`
+	DbName            string `json:"dbName"`
+	DbSchema          string `json:"dbSchema"`
+	ChangeContent     string `json:"changeContent" binding:"required"`
+}
+
+// DBChangeRequestUpdateReq
+// ----------------------------------------------------------------------
+// 编辑数据库变更申请请求
+type DBChangeRequestUpdateReq struct {
+	ID                int64  `json:"id" binding:"required"`
+	ApplicantTeam     string `json:"applicantTeam" binding:"required"`
+	PlannedChangeTime string `json:"plannedChangeTime" binding:"required"`
+	UrgencyLevel      string `json:"urgencyLevel" binding:"required"`
+	ChangeType        string `json:"changeType" binding:"required"`
+	ChangeReason      string `json:"changeReason" binding:"required"`
+	RequirementUrl    string `json:"requirementUrl"`
+	ImpactScope       string `json:"impactScope"`
+	DbType            string `json:"dbType" binding:"required"`
+	TestDbIp          string `json:"TestDbIp" binding:"required"`
+	TestDbName        string `json:"TestDbName"`
+	TestDbSchema      string `json:"TestDbSchema"`
+	DbIp              string `json:"dbIp" binding:"required"`
+	DbName            string `json:"dbName"`
+	DbSchema          string `json:"dbSchema"`
+	ChangeContent     string `json:"changeContent" binding:"required"`
+}
+
+// DBChangeRequestReleaseReq
+// ----------------------------------------------------------------------
+// 数据库变更申请发布验证请求
+type DBChangeRequestReleaseReq struct {
+	ID              int64  `json:"id" binding:"required"`
+	TestPublisher   string `json:"testPublisher"`
+	ProdPublisher   string `json:"prodPublisher"`
+	ReleaseVerifier string `json:"releaseVerifier"`
+}
+
+// DBChangeRequestDeleteReq
+// ----------------------------------------------------------------------
+// 删除数据库变更申请请求
+type DBChangeRequestDeleteReq struct {
+	ID int64 `json:"id" binding:"required"`
+}
+
 // RegisterAPIRoutes
 // ----------------------------------------------------------------------
 // 注册所有 API 路由
@@ -201,6 +261,12 @@ func RegisterAPIRoutes(r *gin.Engine) {
 			// SQL 审核历史接口
 			queryGroup.GET("/audit-history", listAuditHistoryHandler)
 			queryGroup.POST("/audit-submit", submitAuditHandler)
+
+			// 数据库变更申请接口
+			queryGroup.GET("/db-change-requests", listDBChangeRequestsHandler)
+			queryGroup.POST("/db-change-requests", createDBChangeRequestHandler)
+			queryGroup.PUT("/db-change-requests", updateDBChangeRequestHandler)
+			queryGroup.DELETE("/db-change-requests", deleteDBChangeRequestHandler)
 		}
 
 		adminGroup := api.Group("/admin")
@@ -219,6 +285,9 @@ func RegisterAPIRoutes(r *gin.Engine) {
 
 			adminGroup.GET("/audits", adminListSubmittedAuditsHandler)
 			adminGroup.PUT("/audits/review", adminReviewAuditHandler)
+
+			adminGroup.GET("/db-change-requests/release", adminListReleaseDBChangeRequestsHandler)
+			adminGroup.PUT("/db-change-requests/release", adminReleaseDBChangeRequestHandler)
 		}
 	}
 }
@@ -1946,5 +2015,248 @@ func adminReviewAuditHandler(c *gin.Context) {
 
 	c.JSON(200, gin.H{
 		"message": "审核操作成功",
+	})
+}
+
+// ----------------------------------------------------------------------
+// 数据库变更申请接口
+// ----------------------------------------------------------------------
+
+func listDBChangeRequestsHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+
+	applicant := "admin"
+	if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+		applicant = displayName.(string)
+	} else if username, ok := c.Get("currentUsername"); ok && username.(string) != "" {
+		applicant = username.(string)
+	}
+
+	applicantTeam := c.Query("applicantTeam")
+	urgencyLevel := c.Query("urgencyLevel")
+	dbType := c.Query("dbType")
+
+	total, records, err := appsql.QueryDBChangeRequests(page, pageSize, applicant, applicantTeam, urgencyLevel, dbType)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": err.Error(), "total": 0, "records": []any{}})
+		return
+	}
+
+	if records == nil {
+		records = []appsql.DBChangeRequestRecord{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"ok":      true,
+		"message": "获取成功",
+		"total":   total,
+		"records": records,
+	})
+}
+
+func createDBChangeRequestHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	applicant := "admin"
+	if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+		applicant = displayName.(string)
+	} else if username, ok := c.Get("currentUsername"); ok && username.(string) != "" {
+		applicant = username.(string)
+	}
+
+	var req DBChangeRequestCreateReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	err := appsql.CreateDBChangeRequest(appsql.DBChangeRequestRecord{
+		Applicant:         applicant,
+		ApplicantTeam:     req.ApplicantTeam,
+		PlannedChangeTime: req.PlannedChangeTime,
+		UrgencyLevel:      req.UrgencyLevel,
+		ChangeType:        req.ChangeType,
+		ChangeReason:      req.ChangeReason,
+		RequirementUrl:    req.RequirementUrl,
+		ImpactScope:       req.ImpactScope,
+		DbType:            req.DbType,
+		TestDbIp:          req.TestDbIp,
+		TestDbName:        req.TestDbName,
+		TestDbSchema:      req.TestDbSchema,
+		DbIp:              req.DbIp,
+		DbName:            req.DbName,
+		DbSchema:          req.DbSchema,
+		ChangeContent:     req.ChangeContent,
+	})
+
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "创建失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "申请提交成功"})
+}
+
+func updateDBChangeRequestHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	applicant := "admin"
+	if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+		applicant = displayName.(string)
+	} else if username, ok := c.Get("currentUsername"); ok && username.(string) != "" {
+		applicant = username.(string)
+	}
+
+	roleName := "user"
+	if r, ok := c.Get("currentRole"); ok {
+		roleName = r.(string)
+	}
+
+	var req DBChangeRequestUpdateReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	err := appsql.UpdateDBChangeRequest(appsql.DBChangeRequestRecord{
+		ID:                req.ID,
+		Applicant:         applicant,
+		ApplicantTeam:     req.ApplicantTeam,
+		PlannedChangeTime: req.PlannedChangeTime,
+		UrgencyLevel:      req.UrgencyLevel,
+		ChangeType:        req.ChangeType,
+		ChangeReason:      req.ChangeReason,
+		RequirementUrl:    req.RequirementUrl,
+		ImpactScope:       req.ImpactScope,
+		DbType:            req.DbType,
+		TestDbIp:          req.TestDbIp,
+		TestDbName:        req.TestDbName,
+		TestDbSchema:      req.TestDbSchema,
+		DbIp:              req.DbIp,
+		DbName:            req.DbName,
+		DbSchema:          req.DbSchema,
+		ChangeContent:     req.ChangeContent,
+	}, roleName)
+
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "更新失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "申请更新成功"})
+}
+
+func deleteDBChangeRequestHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	applicant := "admin"
+	if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+		applicant = displayName.(string)
+	} else if username, ok := c.Get("currentUsername"); ok && username.(string) != "" {
+		applicant = username.(string)
+	}
+
+	roleName := "user"
+	if r, ok := c.Get("currentRole"); ok {
+		roleName = r.(string)
+	}
+
+	var req DBChangeRequestDeleteReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	if err := appsql.DeleteDBChangeRequest(req.ID, applicant, roleName); err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "删除失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "申请删除成功"})
+}
+
+func adminReleaseDBChangeRequestHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	var req DBChangeRequestReleaseReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	err := appsql.UpdateDBChangeRequestRelease(req.ID, req.TestPublisher, req.ProdPublisher, req.ReleaseVerifier)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "更新失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "发布验证信息更新成功"})
+}
+
+func adminListReleaseDBChangeRequestsHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+
+	applicantTeam := c.Query("applicantTeam")
+	urgencyLevel := c.Query("urgencyLevel")
+	dbType := c.Query("dbType")
+	isVerified := c.Query("isVerified")
+
+	total, records, err := appsql.QueryDBChangeRequestsForRelease(page, pageSize, applicantTeam, urgencyLevel, dbType, isVerified)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": err.Error(), "total": 0, "records": []any{}})
+		return
+	}
+
+	if records == nil {
+		records = []appsql.DBChangeRequestRecord{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"ok":      true,
+		"message": "获取成功",
+		"total":   total,
+		"records": records,
 	})
 }
