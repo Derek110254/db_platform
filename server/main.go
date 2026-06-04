@@ -30,7 +30,6 @@ var dist embed.FS
 // 5. 注册前端静态页面。
 func main() {
 	// 初始化认证与连接配置表。
-	// 因为这次采用“代码中固定配置”的方式，所以这里不依赖环境变量。
 	if err := auth.EnsureSchema(); err != nil {
 		panic(fmt.Sprintf("初始化认证数据库失败: %v", err))
 	}

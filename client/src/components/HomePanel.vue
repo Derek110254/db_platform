@@ -3,7 +3,7 @@
  * HomePanel.vue
  * ------------------------------------------------------------------
  * 该组件负责首页的全部逻辑：
- * 1. SQL 风险监测
+ * 1. DML 风险检测
  * 2. DDL 规范检查
  * 3. SQL / DDL 文件上传
  * 4. SQL 格式化
@@ -24,7 +24,7 @@ type DBType = 'mysql' | 'oracle'
 
 /**
  * 首页模式：
- * sql = DML 风险监测
+ * sql = DML 风险检测
  * ddl = DDL 规范检查
  */
 type ModeType = 'sql' | 'ddl'
@@ -156,7 +156,7 @@ const formatHomeSQL = () => {
 }
 
 /**
- * 执行 SQL 风险检测
+ * 执行 SQL 自查
  */
 const checkSQL = async () => {
   sqlLoading.value = true
@@ -298,7 +298,7 @@ const switchMode = (mode: ModeType) => {
         @click="switchMode('sql')"
         type="button"
       >
-        DML 风险监测
+        DML 风险检测
       </button>
       <button
         :class="['mode-btn', activeMode === 'ddl' ? 'active' : '']"

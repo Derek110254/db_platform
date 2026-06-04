@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS platform_user (
     can_query_data TINYINT NOT NULL DEFAULT 1 COMMENT '是否允许访问查询页面：1是，0否',
     can_query_plan TINYINT NOT NULL DEFAULT 1 COMMENT '是否允许访问执行计划页面：1是，0否',
     need_change_pwd TINYINT NOT NULL DEFAULT 1 COMMENT '首次登录是否需要修改密码：1是，0否',
+    is_deleted TINYINT NOT NULL DEFAULT 0 COMMENT '是否删除：1是，0否',
     create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
@@ -350,7 +351,7 @@ SELECT
     can_query_plan,
     need_change_pwd
 FROM platform_user
-WHERE username = ?
+WHERE username = ? AND is_deleted = 0
 LIMIT 1
 `
 
@@ -408,6 +409,78 @@ VALUES (?, ?, ?, ?)
 	return user, token, nil
 }
 
+// LoginByUsername
+// ----------------------------------------------------------------------
+// 仅通过用户名登录（用于 SSO/第三方认证）
+func LoginByUsername(username string) (SessionUser, string, error) {
+	db, err := getAuthDB()
+	if err != nil {
+		return SessionUser{}, "", err
+	}
+
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return SessionUser{}, "", errors.New("用户名不能为空")
+	}
+
+	var user SessionUser
+	var isEnabled int
+
+	query := `
+SELECT
+    id,
+    username,
+    display_name,
+    role_name,
+    is_enabled,
+    can_query_data,
+    can_query_plan,
+    need_change_pwd
+FROM platform_user
+WHERE username = ? AND is_deleted = 0
+LIMIT 1
+`
+
+	err = db.QueryRow(query, username).Scan(
+		&user.UserID,
+		&user.Username,
+		&user.DisplayName,
+		&user.RoleName,
+		&isEnabled,
+		&user.CanQueryData,
+		&user.CanQueryPlan,
+		&user.NeedChangePwd,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return SessionUser{}, "", errors.New("用户不存在")
+		}
+		return SessionUser{}, "", err
+	}
+
+	if isEnabled != 1 {
+		return SessionUser{}, "", errors.New("当前用户已被禁用")
+	}
+
+	token, err := generateSessionToken()
+	if err != nil {
+		return SessionUser{}, "", err
+	}
+
+	expireTime := time.Now().Add(time.Duration(sessionExpireHours) * time.Hour)
+
+	_, err = db.Exec(`
+INSERT INTO platform_session (session_token, user_id, username, expire_time)
+VALUES (?, ?, ?, ?)
+`, token, user.UserID, user.Username, expireTime)
+	if err != nil {
+		return SessionUser{}, "", err
+	}
+
+	_ = DeleteExpiredSessions()
+	return user, token, nil
+}
+
 // GetUserBySessionToken
 // ----------------------------------------------------------------------
 // 根据 session token 获取当前登录用户
@@ -429,6 +502,7 @@ INNER JOIN platform_user u ON s.user_id = u.id
 WHERE s.session_token = ?
   AND s.expire_time > NOW()
   AND u.is_enabled = 1
+  AND u.is_deleted = 0
 LIMIT 1
 `
 

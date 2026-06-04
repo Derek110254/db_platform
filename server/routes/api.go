@@ -239,6 +239,7 @@ func RegisterAPIRoutes(r *gin.Engine) {
 		api.POST("/check-ddl", checkDDLHandler)
 
 		api.POST("/login", loginHandler)
+		api.POST("/sso-login", ssoLoginHandler)
 		api.POST("/logout", logoutHandler)
 		api.GET("/auth/me", authMeHandler)
 
@@ -366,6 +367,55 @@ func loginHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"ok":            true,
 		"message":       "登录成功",
+		"username":      user.Username,
+		"userId":        user.UserID,
+		"role":          user.RoleName,
+		"canQueryData":  user.CanQueryData,
+		"canQueryPlan":  user.CanQueryPlan,
+		"needChangePwd": user.NeedChangePwd,
+	})
+}
+
+type SSOLoginRequest struct {
+	Username string `json:"username"`
+	Token    string `json:"token"`
+}
+
+func ssoLoginHandler(c *gin.Context) {
+	var req SSOLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"ok":      false,
+			"message": "请求格式错误：" + err.Error(),
+		})
+		return
+	}
+
+	username := strings.TrimSpace(req.Username)
+	if username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"ok":      false,
+			"message": "用户名不能为空",
+		})
+		return
+	}
+
+	// 使用拿到的 username 查 platform_user 获取权限并生成 session
+	user, token, err := auth.LoginByUsername(username)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"ok":      false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	auth.WriteSessionCookie(c, token)
+
+	c.JSON(http.StatusOK, gin.H{
+		"ok":            true,
+		"message":       "登录成功",
+		"result":        gin.H{"token": token},
 		"username":      user.Username,
 		"userId":        user.UserID,
 		"role":          user.RoleName,
@@ -909,6 +959,7 @@ func adminListUsersHandler(c *gin.Context) {
 	rows, err := db.Query(`
 SELECT id, username, display_name, role_name, is_enabled, can_query_data, can_query_plan, create_time, update_time
 FROM platform_user
+WHERE is_deleted = 0
 ORDER BY id DESC
 `)
 	if err != nil {
@@ -1029,7 +1080,7 @@ func adminCreateUserHandler(c *gin.Context) {
 	}
 
 	var exists int
-	if err := db.QueryRow(`SELECT COUNT(1) FROM platform_user WHERE username = ?`, req.Username).Scan(&exists); err != nil {
+	if err := db.QueryRow(`SELECT COUNT(1) FROM platform_user WHERE username = ? AND is_deleted = 0`, req.Username).Scan(&exists); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":      false,
 			"message": "校验用户名失败：" + err.Error(),
@@ -1181,7 +1232,7 @@ func adminUpdateUserHandler(c *gin.Context) {
 	}
 
 	var exists int
-	if err := db.QueryRow(`SELECT COUNT(1) FROM platform_user WHERE username = ? AND id <> ?`, req.Username, req.ID).Scan(&exists); err != nil {
+	if err := db.QueryRow(`SELECT COUNT(1) FROM platform_user WHERE username = ? AND id <> ? AND is_deleted = 0`, req.Username, req.ID).Scan(&exists); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":      false,
 			"message": "校验用户名失败：" + err.Error(),
@@ -1324,7 +1375,7 @@ func adminDeleteUserHandler(c *gin.Context) {
 		return
 	}
 
-	res, err := tx.Exec(`DELETE FROM platform_user WHERE id = ?`, req.ID)
+	res, err := tx.Exec(`UPDATE platform_user SET is_deleted = 1 WHERE id = ?`, req.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":      false,

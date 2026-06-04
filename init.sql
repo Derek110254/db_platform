@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS platform_user (
     can_query_data TINYINT NOT NULL DEFAULT 1 COMMENT '是否允许访问查询页面：1是，0否',
     can_query_plan TINYINT NOT NULL DEFAULT 1 COMMENT '是否允许访问执行计划页面：1是，0否',
     need_change_pwd TINYINT NOT NULL DEFAULT 1 COMMENT '首次登录是否需要修改密码：1是，0否',
+    is_deleted TINYINT NOT NULL DEFAULT 0 COMMENT '是否删除：1是，0否',
     create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
@@ -227,7 +228,7 @@ SELECT
     1
 FROM DUAL
 WHERE NOT EXISTS (
-    SELECT 1 FROM platform_user WHERE username = 'admin'
+    SELECT 1 FROM platform_user WHERE username = 'admin' AND is_deleted = 0
 );
 
 -- =========================================================

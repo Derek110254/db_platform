@@ -484,7 +484,7 @@ const handlePopState = async () => {
     const ok = await checkAuthStatus(false)
     if (!ok) {
       currentPage.value = 'home'
-      window.history.replaceState({}, '', '/')
+      window.history.replaceState({}, '', '/' + window.location.search)
       loginDialogVisible.value = true
       loginMessage.value = '请先登录后再访问该页面'
       return
@@ -495,7 +495,7 @@ const handlePopState = async () => {
     const ok = await checkAuthStatus(false)
     if (!ok || !isAdmin.value) {
       currentPage.value = 'home'
-      window.history.replaceState({}, '', '/')
+      window.history.replaceState({}, '', '/' + window.location.search)
       return
     }
   }
@@ -514,13 +514,17 @@ const handlePopState = async () => {
 onMounted(async () => {
   window.addEventListener('popstate', handlePopState)
 
+  if (window.location.search.includes('token=') || window.location.hash.includes('token=')) {
+    loginDialogVisible.value = true
+  }
+
   await checkAuthStatus(false)
 
   if (currentPage.value === 'query' || currentPage.value === 'query-plan') {
     const ok = await checkAuthStatus(false)
     if (!ok) {
       currentPage.value = 'home'
-      window.history.replaceState({}, '', '/')
+      window.history.replaceState({}, '', '/' + window.location.search)
       loginDialogVisible.value = true
       loginMessage.value = '请先登录后再访问该页面'
       return
@@ -649,12 +653,20 @@ const submitLogin = async () => {
     loginMessage.value = ''
 
     if (currentUser.value?.needChangePwd !== 1) {
-      currentPage.value = 'query'
-      window.history.pushState({}, '', '/query')
-      await loadQueryConnections()
-      loadQueryHistory()
-      if (selectedConnectionName.value) {
-        await loadQueryMetadata()
+      if (hasQueryDataPermission.value) {
+        currentPage.value = 'query'
+        window.history.pushState({}, '', '/query')
+        await loadQueryConnections()
+        loadQueryHistory()
+        if (selectedConnectionName.value) {
+          await loadQueryMetadata()
+        }
+      } else if (hasQueryPlanPermission.value) {
+        currentPage.value = 'query-plan'
+        window.history.pushState({}, '', '/query-plan')
+      } else {
+        currentPage.value = 'home'
+        window.history.pushState({}, '', '/')
       }
     }
   } catch (err) {
@@ -662,6 +674,25 @@ const submitLogin = async () => {
     loginMessage.value = '登录失败，请检查后端是否启动'
   } finally {
     loginLoading.value = false
+  }
+}
+
+/**
+ * 处理 SSO 登录成功
+ */
+const handleSsoSuccess = async () => {
+  await checkAuthStatus(false)
+  loginDialogVisible.value = false
+  loginMessage.value = ''
+
+  if (currentUser.value?.needChangePwd !== 1) {
+    if (hasQueryDataPermission.value) {
+      navigateTo('query')
+    } else if (hasQueryPlanPermission.value) {
+      navigateTo('query-plan')
+    } else {
+      navigateTo('home')
+    }
   }
 }
 
@@ -1199,7 +1230,7 @@ const scrollToTop = () => {
         <div class="header-main">
           <h1>SQL 综合管理平台</h1>
           <p class="platform-desc">
-            未登录用户仅可访问 SQL 风险检测；登录后解锁更多功能。
+            未登录用户仅可访问 SQL 自查工具；登录后解锁更多功能。
           </p>
         </div>
 
@@ -1274,7 +1305,7 @@ const scrollToTop = () => {
           @click="navigateTo('home')"
           type="button"
         >
-          SQL 风险检测
+          SQL 自查工具
         </button>
 
         <button
@@ -1304,23 +1335,6 @@ const scrollToTop = () => {
           数据库变更申请
         </button>
 
-        <template v-if="isAdmin">
-          <button
-            :class="['nav-btn', currentPage === 'admin-users' ? 'active' : '']"
-            @click="navigateTo('admin-users')"
-            type="button"
-          >
-            用户管理
-          </button>
-
-          <button
-            :class="['nav-btn', currentPage === 'admin-connections' ? 'active' : '']"
-            @click="navigateTo('admin-connections')"
-            type="button"
-          >
-            数据库管理
-          </button>
-        </template>
       </div>
 
       <!-- 首页 -->
@@ -1516,6 +1530,7 @@ const scrollToTop = () => {
       @update:username="loginForm.username = $event"
       @update:password="loginForm.password = $event"
       @submit="submitLogin"
+      @sso-success="handleSsoSuccess"
       @close="closeLoginDialog"
     />
 
