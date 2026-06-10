@@ -39,6 +39,70 @@ const listLoading = ref(false)
 const listData = ref<DBChangeRequest[]>([])
 const totalCount = ref(0)
 
+interface TeamDbEnvItem {
+  id: number
+  teamName: string
+  envName: string
+  dbType: string
+  testDbIp: string
+  testDbName: string
+  testDbSchema: string
+  prodDbIp: string
+  prodDbName: string
+  prodDbSchema: string
+}
+const teamDbEnvs = ref<TeamDbEnvItem[]>([])
+const selectedEnvId = ref<number | ''>('')
+
+const loadTeamDbEnvs = async () => {
+  try {
+    const res = await fetch('/api/team-db-envs', { credentials: 'include' })
+    const data = await res.json()
+    if (data.ok) {
+      teamDbEnvs.value = data.records || []
+    }
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+const defaultTeams = ['交易开发', '运营开发', '后台开发', '增长开发']
+const dynamicTeams = computed(() => {
+  const teams = new Set(defaultTeams)
+  teamDbEnvs.value.forEach(env => teams.add(env.teamName))
+  return Array.from(teams)
+})
+
+const availableEnvs = computed(() => {
+  return teamDbEnvs.value.filter(e => e.teamName === editForm.value.applicantTeam)
+})
+
+const handleEnvChange = () => {
+  const env = teamDbEnvs.value.find(e => e.id === selectedEnvId.value)
+  if (env) {
+    let mappedDbType = env.dbType
+    if (mappedDbType.toLowerCase() === 'mysql') mappedDbType = 'MySQL'
+    else if (mappedDbType.toLowerCase() === 'oracle') mappedDbType = 'Oracle'
+    else if (mappedDbType.toLowerCase() === 'redis') mappedDbType = 'redis'
+    
+    const standardOptions = ['Oracle', 'MySQL', 'redis']
+    if (!standardOptions.includes(mappedDbType)) {
+      editForm.value.dbType = ['其他']
+      editForm.value.otherDbTypeReason = mappedDbType
+    } else {
+      editForm.value.dbType = [mappedDbType]
+      editForm.value.otherDbTypeReason = ''
+    }
+    
+    editForm.value.testDbIp = env.testDbIp || ''
+    editForm.value.testDbName = env.testDbName || ''
+    editForm.value.testDbSchema = env.testDbSchema || ''
+    editForm.value.dbIp = env.prodDbIp || ''
+    editForm.value.dbName = env.prodDbName || ''
+    editForm.value.dbSchema = env.prodDbSchema || ''
+  }
+}
+
 const searchForm = ref({
   applicantTeam: '',
   urgencyLevel: '',
@@ -138,6 +202,7 @@ const openCreateDialog = () => {
 const openEditDialog = (row: DBChangeRequest) => {
   dialogTitle.value = '编辑数据库变更申请'
   isViewMode.value = false
+  selectedEnvId.value = ''
   
   let changeTypeArr: string[] = []
   let otherReason = ''
@@ -388,6 +453,7 @@ const copyChangeContent = async () => {
 }
 
 onMounted(() => {
+  loadTeamDbEnvs()
   loadData()
 })
 </script>
@@ -408,10 +474,7 @@ onMounted(() => {
         <label>申请团队</label>
         <select v-model="searchForm.applicantTeam">
           <option value="">全部</option>
-          <option value="交易开发">交易开发</option>
-          <option value="运营开发">运营开发</option>
-          <option value="后台开发">后台开发</option>
-          <option value="增长开发">增长开发</option>
+          <option v-for="team in dynamicTeams" :key="team" :value="team">{{ team }}</option>
         </select>
       </div>
       <div class="search-item">
@@ -526,12 +589,16 @@ onMounted(() => {
           <div class="form-grid">
             <div class="form-item">
               <label>申请团队 <span v-if="!isViewMode" class="required">*</span></label>
-              <select v-model="editForm.applicantTeam">
+              <select v-model="editForm.applicantTeam" @change="selectedEnvId = ''">
                 <option value="">请选择申请团队</option>
-                <option value="交易开发">交易开发</option>
-                <option value="运营开发">运营开发</option>
-                <option value="后台开发">后台开发</option>
-                <option value="增长开发">增长开发</option>
+                <option v-for="team in dynamicTeams" :key="team" :value="team">{{ team }}</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label>可用环境 (选填，选择后自动填入下方信息)</label>
+              <select v-model="selectedEnvId" @change="handleEnvChange" :disabled="!editForm.applicantTeam">
+                <option value="">请选择环境</option>
+                <option v-for="env in availableEnvs" :key="env.id" :value="env.id">{{ env.envName }}</option>
               </select>
             </div>
             <div class="form-item">

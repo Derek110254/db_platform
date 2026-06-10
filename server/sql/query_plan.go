@@ -224,7 +224,7 @@ func callQwenInterpret(sqlText, planText string) (string, int, error) {
 
 	// 构造请求数据
 	var reqBody QwenRequest
-	reqBody.Model = "qwen-turbo" // 使用 max 模型处理复杂逻辑,将原本的 qwen-max 改为 qwen-plus 或 qwen-turbo
+	reqBody.Model = "qwen-plus" // 使用 max 模型处理复杂逻辑,将原本的 qwen-max 改为 qwen-plus 或 qwen-turbo
 	reqBody.Input.Messages = []QwenMessage{
 		{Role: "system", Content: "你是一个专业的数据库性能分析助手。"},
 		{Role: "user", Content: prompt},

@@ -24,28 +24,28 @@ db_change_request.go
 // ------------------------------------------------------------
 // 数据库变更申请记录模型
 type DBChangeRequestRecord struct {
-	ID                    int64  `json:"id"`
-	Applicant             string `json:"applicant"`             // 申请人
-	ApplicantTeam         string `json:"applicantTeam"`         // 申请团队
-	PlannedChangeTime     string `json:"plannedChangeTime"`     // 计划变更时间
-	UrgencyLevel          string `json:"urgencyLevel"`          // 紧急程度
-	TestPublisher         string `json:"testPublisher"`         // 测试线发布人
-	ProdPublisher         string `json:"prodPublisher"`         // 生产线发布人
-	ChangeType            string `json:"changeType"`            // 变更类型
-	ChangeReason          string `json:"changeReason"`          // 变更原因
-	RequirementUrl        string `json:"requirementUrl"`        // 需求url
-	ImpactScope           string `json:"impactScope"`           // 影响范围
-	DbType                string `json:"dbType"`                // 数据库类型
-	TestDbIp              string `json:"testDbIp"`              // 测试线数据库IP
-	TestDbName            string `json:"testDbName"`            // 测试线数据库名
-	TestDbSchema          string `json:"testDbSchema"`          // 测试线数据库schema
-	DbIp                  string `json:"dbIp"`                  // 生产线数据库IP
-	DbName                string `json:"dbName"`                // 生产线数据库实例/数据库名
-	DbSchema              string `json:"dbSchema"`              // 生产线数据库schema
-	ChangeContent         string `json:"changeContent"`         // 变更内容
-	ReleaseVerifier       string `json:"releaseVerifier"`       // 发布验证人
-	CreateTime            string `json:"createTime"`            // 创建时间
-	UpdateTime            string `json:"updateTime"`            // 更新时间
+	ID                int64  `json:"id"`
+	Applicant         string `json:"applicant"`         // 申请人
+	ApplicantTeam     string `json:"applicantTeam"`     // 申请团队
+	PlannedChangeTime string `json:"plannedChangeTime"` // 计划变更时间
+	UrgencyLevel      string `json:"urgencyLevel"`      // 紧急程度
+	TestPublisher     string `json:"testPublisher"`     // 测试线发布人
+	ProdPublisher     string `json:"prodPublisher"`     // 生产线发布人
+	ChangeType        string `json:"changeType"`        // 变更类型
+	ChangeReason      string `json:"changeReason"`      // 变更原因
+	RequirementUrl    string `json:"requirementUrl"`    // 需求url
+	ImpactScope       string `json:"impactScope"`       // 影响范围
+	DbType            string `json:"dbType"`            // 数据库类型
+	TestDbIp          string `json:"testDbIp"`          // 测试线数据库IP
+	TestDbName        string `json:"testDbName"`        // 测试线数据库名
+	TestDbSchema      string `json:"testDbSchema"`      // 测试线数据库schema
+	DbIp              string `json:"dbIp"`              // 生产线数据库IP
+	DbName            string `json:"dbName"`            // 生产线数据库实例/数据库名
+	DbSchema          string `json:"dbSchema"`          // 生产线数据库schema
+	ChangeContent     string `json:"changeContent"`     // 变更内容
+	ReleaseVerifier   string `json:"releaseVerifier"`   // 发布验证人
+	CreateTime        string `json:"createTime"`        // 创建时间
+	UpdateTime        string `json:"updateTime"`        // 更新时间
 }
 
 // CreateDBChangeRequest
@@ -86,9 +86,9 @@ INSERT INTO platform_db_change_request (
 // 更新数据库变更申请。
 //
 // 业务逻辑与权限控制：
-// 1. 根据当前用户的 roleName 判断权限，admin 可以编辑所有记录，普通用户只能编辑自己的申请。
-// 2. 检查记录是否已经通过发布验证（测试线发布人、生产线发布人、发布验证人均不为空），
-//    如果已验证，则拒绝修改操作。
+//  1. 根据当前用户的 roleName 判断权限，admin 可以编辑所有记录，普通用户只能编辑自己的申请。
+//  2. 检查记录是否已经通过发布验证（测试线发布人、生产线发布人、发布验证人均不为空），
+//     如果已验证，则拒绝修改操作。
 func UpdateDBChangeRequest(item DBChangeRequestRecord, roleName string) error {
 	db, err := config.GetPlatformDB()
 	if err != nil {
@@ -212,7 +212,7 @@ func DeleteDBChangeRequest(id int64, applicant string, roleName string) error {
 	} else {
 		res, err = db.Exec(`DELETE FROM platform_db_change_request WHERE id = ? AND applicant = ?`, id, applicant)
 	}
-	
+
 	if err != nil {
 		return err
 	}
@@ -297,7 +297,7 @@ FROM platform_db_change_request
 			&item.ID, &item.Applicant, &item.ApplicantTeam, &plannedTime, &item.UrgencyLevel,
 			&item.TestPublisher, &item.ProdPublisher,
 			&item.ChangeType, &item.ChangeReason,
-			&item.RequirementUrl, &item.ImpactScope, &item.DbType, 
+			&item.RequirementUrl, &item.ImpactScope, &item.DbType,
 			&item.TestDbIp, &item.TestDbName, &item.TestDbSchema,
 			&item.DbIp, &item.DbName, &item.DbSchema,
 			&item.ChangeContent, &item.ReleaseVerifier, &item.CreateTime, &item.UpdateTime,
@@ -328,9 +328,10 @@ func QueryDBChangeRequestsForRelease(page, pageSize int, applicantTeam, urgencyL
 	baseWhere := "WHERE 1=1"
 	var args []interface{}
 
-	if isVerified == "1" {
+	switch isVerified {
+	case "1":
 		baseWhere += " AND (test_publisher != '' AND test_publisher IS NOT NULL AND prod_publisher != '' AND prod_publisher IS NOT NULL AND release_verifier != '' AND release_verifier IS NOT NULL)"
-	} else if isVerified == "0" {
+	case "0":
 		baseWhere += " AND (test_publisher = '' OR test_publisher IS NULL OR prod_publisher = '' OR prod_publisher IS NULL OR release_verifier = '' OR release_verifier IS NULL)"
 	}
 
@@ -382,7 +383,7 @@ FROM platform_db_change_request
 			&item.ID, &item.Applicant, &item.ApplicantTeam, &plannedTime, &item.UrgencyLevel,
 			&item.TestPublisher, &item.ProdPublisher,
 			&item.ChangeType, &item.ChangeReason,
-			&item.RequirementUrl, &item.ImpactScope, &item.DbType, 
+			&item.RequirementUrl, &item.ImpactScope, &item.DbType,
 			&item.TestDbIp, &item.TestDbName, &item.TestDbSchema,
 			&item.DbIp, &item.DbName, &item.DbSchema,
 			&item.ChangeContent, &item.ReleaseVerifier, &item.CreateTime, &item.UpdateTime,

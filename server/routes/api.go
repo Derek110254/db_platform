@@ -179,9 +179,9 @@ type DBChangeRequestCreateReq struct {
 	RequirementUrl    string `json:"requirementUrl"`
 	ImpactScope       string `json:"impactScope"`
 	DbType            string `json:"dbType" binding:"required"`
-	TestDbIp          string `json:"TestDbIp" binding:"required"`
-	TestDbName        string `json:"TestDbName"`
-	TestDbSchema      string `json:"TestDbSchema"`
+	TestDbIp          string `json:"testDbIp" binding:"required"`
+	TestDbName        string `json:"testDbName"`
+	TestDbSchema      string `json:"testDbSchema"`
 	DbIp              string `json:"dbIp" binding:"required"`
 	DbName            string `json:"dbName"`
 	DbSchema          string `json:"dbSchema"`
@@ -201,9 +201,9 @@ type DBChangeRequestUpdateReq struct {
 	RequirementUrl    string `json:"requirementUrl"`
 	ImpactScope       string `json:"impactScope"`
 	DbType            string `json:"dbType" binding:"required"`
-	TestDbIp          string `json:"TestDbIp" binding:"required"`
-	TestDbName        string `json:"TestDbName"`
-	TestDbSchema      string `json:"TestDbSchema"`
+	TestDbIp          string `json:"testDbIp" binding:"required"`
+	TestDbName        string `json:"testDbName"`
+	TestDbSchema      string `json:"testDbSchema"`
 	DbIp              string `json:"dbIp" binding:"required"`
 	DbName            string `json:"dbName"`
 	DbSchema          string `json:"dbSchema"`
@@ -268,6 +268,9 @@ func RegisterAPIRoutes(r *gin.Engine) {
 			queryGroup.POST("/db-change-requests", createDBChangeRequestHandler)
 			queryGroup.PUT("/db-change-requests", updateDBChangeRequestHandler)
 			queryGroup.DELETE("/db-change-requests", deleteDBChangeRequestHandler)
+
+			// 团队数据库环境接口（允许普通用户读取）
+			queryGroup.GET("/team-db-envs", listAllTeamDbEnvsForUserHandler)
 		}
 
 		adminGroup := api.Group("/admin")
@@ -289,6 +292,12 @@ func RegisterAPIRoutes(r *gin.Engine) {
 
 			adminGroup.GET("/db-change-requests/release", adminListReleaseDBChangeRequestsHandler)
 			adminGroup.PUT("/db-change-requests/release", adminReleaseDBChangeRequestHandler)
+
+			adminGroup.GET("/team-db-envs", adminListTeamDbEnvsHandler)
+			adminGroup.GET("/team-db-envs/all", adminListAllTeamDbEnvsHandler)
+			adminGroup.POST("/team-db-envs", adminCreateTeamDbEnvHandler)
+			adminGroup.PUT("/team-db-envs", adminUpdateTeamDbEnvHandler)
+			adminGroup.DELETE("/team-db-envs", adminDeleteTeamDbEnvHandler)
 		}
 	}
 }
@@ -1408,7 +1417,7 @@ func adminDeleteUserHandler(c *gin.Context) {
 }
 
 // ----------------------------------------------------------------------
-// 管理员：数据库管理
+// 管理员：查询数据库管理
 // ----------------------------------------------------------------------
 
 func adminListConnectionsHandler(c *gin.Context) {
@@ -2118,6 +2127,24 @@ func listDBChangeRequestsHandler(c *gin.Context) {
 	})
 }
 
+func listAllTeamDbEnvsForUserHandler(c *gin.Context) {
+	records, err := appsql.ListAllTeamDbEnvs()
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": err.Error(), "records": []any{}})
+		return
+	}
+
+	if records == nil {
+		records = []appsql.TeamDbEnvRecord{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"ok":      true,
+		"message": "获取成功",
+		"records": records,
+	})
+}
+
 func createDBChangeRequestHandler(c *gin.Context) {
 	_, _, ok := getCurrentUserContext(c)
 	if !ok {
@@ -2310,4 +2337,102 @@ func adminListReleaseDBChangeRequestsHandler(c *gin.Context) {
 		"total":   total,
 		"records": records,
 	})
+}
+
+// ----------------------------------------------------------------------
+// 团队数据库环境配置接口
+// ----------------------------------------------------------------------
+
+func adminListTeamDbEnvsHandler(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	teamName := c.Query("teamName")
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+
+	total, records, err := appsql.ListTeamDbEnvs(page, pageSize, teamName)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": err.Error(), "total": 0, "records": []any{}})
+		return
+	}
+
+	if records == nil {
+		records = []appsql.TeamDbEnvRecord{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"ok":      true,
+		"message": "获取成功",
+		"total":   total,
+		"records": records,
+	})
+}
+
+func adminListAllTeamDbEnvsHandler(c *gin.Context) {
+	records, err := appsql.ListAllTeamDbEnvs()
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": err.Error(), "records": []any{}})
+		return
+	}
+
+	if records == nil {
+		records = []appsql.TeamDbEnvRecord{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"ok":      true,
+		"message": "获取成功",
+		"records": records,
+	})
+}
+
+func adminCreateTeamDbEnvHandler(c *gin.Context) {
+	var req appsql.TeamDbEnvRecord
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	if err := appsql.CreateTeamDbEnv(req); err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "创建失败：" + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "创建成功"})
+}
+
+func adminUpdateTeamDbEnvHandler(c *gin.Context) {
+	var req appsql.TeamDbEnvRecord
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	if err := appsql.UpdateTeamDbEnv(req); err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "更新失败：" + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "更新成功"})
+}
+
+func adminDeleteTeamDbEnvHandler(c *gin.Context) {
+	var req struct {
+		ID int64 `json:"id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	if err := appsql.DeleteTeamDbEnv(req.ID); err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "删除失败：" + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "删除成功"})
 }

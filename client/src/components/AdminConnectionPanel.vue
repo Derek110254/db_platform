@@ -2,7 +2,7 @@
 /**
  * AdminConnectionPanel.vue
  * ------------------------------------------------------------------
- * 该组件用于“数据库管理”页面。
+ * 该组件用于“查询数据库管理”页面。
  *
  * 主要功能：
  * 1. 展示数据库连接配置列表
@@ -569,8 +569,6 @@ onMounted(() => {
               <th>数据库名</th>
               <th>服务名</th>
               <th>是否启用</th>
-              <th>创建时间</th>
-              <th>更新时间</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -587,8 +585,6 @@ onMounted(() => {
               <td>{{ item.databaseName }}</td>
               <td>{{ item.serviceName }}</td>
               <td>{{ item.isEnabled === 1 ? '启用' : '禁用' }}</td>
-              <td>{{ item.createTime }}</td>
-              <td>{{ item.updateTime }}</td>
               <td>
                 <div class="row-btns">
                   <button

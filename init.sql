@@ -262,3 +262,29 @@ CREATE TABLE IF NOT EXISTS platform_db_change_request (
     KEY idx_platform_db_change_request_applicant (applicant),
     KEY idx_platform_db_change_request_create_time (create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据库变更申请表';
+
+-- =========================================================
+-- 11. 创建团队数据库环境配置表
+-- ---------------------------------------------------------
+-- =========================================================
+CREATE TABLE IF NOT EXISTS platform_team_db_env (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    team_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '团队名称，如：交易开发',
+    env_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '环境名称，如：交易核心库、营销活动库',
+    db_type VARCHAR(32) NOT NULL DEFAULT '' COMMENT '数据库类型：Oracle, MySQL, redis, 其他',
+    
+    -- 测试线信息
+    test_db_ip VARCHAR(128) NOT NULL DEFAULT '' COMMENT '测试线数据库IP',
+    test_db_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '测试线实例/数据库名',
+    test_db_schema VARCHAR(128) NOT NULL DEFAULT '' COMMENT '测试线数据库schema',
+    
+    -- 生产线信息
+    prod_db_ip VARCHAR(128) NOT NULL DEFAULT '' COMMENT '生产线数据库IP',
+    prod_db_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '生产线实例/数据库名',
+    prod_db_schema VARCHAR(128) NOT NULL DEFAULT '' COMMENT '生产线数据库schema',
+    
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_team_db_env_team_name (team_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='团队数据库环境配置表';

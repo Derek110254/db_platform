@@ -9,7 +9,10 @@
  * 2. 数据库查询页
  * 3. 管理员页面：
  *    - 用户管理
- *    - 数据库管理
+ *    - 查询数据库管理
+ *    - SQL 审核管理
+ *    - 发布验证管理
+ *    - 团队数据库环境
  * 4. 登录弹窗
  * 5. 查询历史
  * 6. SQL 收藏弹窗
@@ -44,6 +47,7 @@ import AuditHistoryPanel from './components/AuditHistoryPanel.vue'
 import ChangePasswordDialog from './components/ChangePasswordDialog.vue'
 import DbChangeRequestPanel from './components/DbChangeRequestPanel.vue'
 import AdminDbChangeReleasePanel from './components/AdminDbChangeReleasePanel.vue'
+import AdminTeamDbEnvPanel from './components/AdminTeamDbEnvPanel.vue'
 
 /**
  * 数据库类型
@@ -53,7 +57,7 @@ type DBType = 'mysql' | 'oracle'
 /**
  * 页面类型
  */
-type PageType = 'home' | 'query' | 'query-plan' | 'audit-history' | 'admin-users' | 'admin-connections' | 'admin-audits' | 'db-change-requests' | 'admin-db-change-release'
+type PageType = 'home' | 'query' | 'query-plan' | 'audit-history' | 'admin-users' | 'admin-connections' | 'admin-audits' | 'db-change-requests' | 'admin-db-change-release' | 'admin-team-db-envs'
 
 /**
  * 当前登录用户信息
@@ -135,6 +139,8 @@ const resolvePageByPath = (): PageType => {
   if (path === '/admin/users') return 'admin-users'
   if (path === '/admin/connections') return 'admin-connections'
   if (path === '/admin/audits') return 'admin-audits'
+  if (path === '/admin/db-change-release') return 'admin-db-change-release'
+  if (path === '/admin/team-db-envs') return 'admin-team-db-envs'
   return 'home'
 }
 
@@ -393,13 +399,15 @@ watch(
     } else if (page === 'admin-users') {
       document.title = '用户管理'
     } else if (page === 'admin-connections') {
-      document.title = '数据库管理'
+      document.title = '查询数据库管理'
     } else if (page === 'admin-audits') {
       document.title = 'SQL 审核管理'
     } else if (page === 'db-change-requests') {
       document.title = '数据库变更申请'
     } else if (page === 'admin-db-change-release') {
       document.title = '发布验证管理'
+    } else if (page === 'admin-team-db-envs') {
+      document.title = '团队数据库环境'
     } else {
       document.title = 'SQL 综合管理平台'
     }
@@ -423,6 +431,7 @@ const getPathByPage = (page: PageType): string => {
   if (page === 'admin-connections') return '/admin/connections'
   if (page === 'admin-audits') return '/admin/audits'
   if (page === 'admin-db-change-release') return '/admin/db-change-release'
+  if (page === 'admin-team-db-envs') return '/admin/team-db-envs'
   return '/'
 }
 
@@ -441,7 +450,7 @@ const navigateTo = async (page: PageType) => {
     }
   }
 
-  if (page === 'admin-users' || page === 'admin-connections' || page === 'admin-audits' || page === 'admin-db-change-release') {
+  if (page === 'admin-users' || page === 'admin-connections' || page === 'admin-audits' || page === 'admin-db-change-release' || page === 'admin-team-db-envs') {
     const ok = await checkAuthStatus(false)
     if (!ok) {
       loginDialogVisible.value = true
@@ -491,7 +500,7 @@ const handlePopState = async () => {
     }
   }
 
-  if (targetPage === 'admin-users' || targetPage === 'admin-connections' || targetPage === 'admin-audits') {
+  if (targetPage === 'admin-users' || targetPage === 'admin-connections' || targetPage === 'admin-audits' || targetPage === 'admin-db-change-release' || targetPage === 'admin-team-db-envs') {
     const ok = await checkAuthStatus(false)
     if (!ok || !isAdmin.value) {
       currentPage.value = 'home'
@@ -1261,7 +1270,7 @@ const scrollToTop = () => {
                   @click="navigateTo('admin-connections')"
                   type="button"
                 >
-                  数据库管理
+                  查询数据库管理
                 </button>
                 <button
                   v-if="isAdmin"
@@ -1278,6 +1287,14 @@ const scrollToTop = () => {
                   type="button"
                 >
                   发布验证管理
+                </button>
+                <button
+                  v-if="isAdmin"
+                  class="user-dropdown-item"
+                  @click="navigateTo('admin-team-db-envs')"
+                  type="button"
+                >
+                  团队数据库环境
                 </button>
                 <div v-if="isAdmin" class="user-dropdown-divider"></div>
                 <button class="user-dropdown-item" @click="openChangePasswordDialog" type="button">
@@ -1518,6 +1535,11 @@ const scrollToTop = () => {
       <template v-else-if="currentPage === 'admin-db-change-release'">
         <AdminDbChangeReleasePanel />
       </template>
+
+      <!-- 管理员页面：团队数据库环境 -->
+      <template v-else-if="currentPage === 'admin-team-db-envs'">
+        <AdminTeamDbEnvPanel />
+      </template>
     </div>
 
     <!-- 登录弹窗 -->
@@ -1645,6 +1667,7 @@ const scrollToTop = () => {
   text-align: center;
   cursor: pointer;
   transition: background 0.2s;
+  white-space: nowrap;
 }
 
 .user-dropdown-item:hover {
