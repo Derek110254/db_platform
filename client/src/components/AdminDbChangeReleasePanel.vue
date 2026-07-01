@@ -13,6 +13,7 @@ interface DBChangeRequest {
   id: number
   applicant: string
   applicantTeam: string
+  environment: string
   plannedChangeTime: string
   urgencyLevel: string
   testPublisher: string
@@ -261,6 +262,7 @@ onMounted(async () => {
             <th>ID</th>
             <th>申请人</th>
             <th>申请团队</th>
+            <th>环境</th>
             <th>计划变更时间</th>
             <th>测试线发布人</th>
             <th>生产线发布人</th>
@@ -272,12 +274,13 @@ onMounted(async () => {
         </thead>
         <tbody>
           <tr v-if="listData.length === 0">
-            <td colspan="10" class="empty-cell">暂无数据</td>
+            <td colspan="11" class="empty-cell">暂无数据</td>
           </tr>
           <tr v-for="item in listData" :key="item.id">
             <td>{{ item.id }}</td>
             <td>{{ item.applicant }}</td>
             <td>{{ item.applicantTeam }}</td>
+            <td>{{ item.environment || '-' }}</td>
             <td>{{ formatDate(item.plannedChangeTime) }}</td>
             <td>{{ item.testPublisher || '-' }}</td>
             <td>{{ item.prodPublisher || '-' }}</td>
@@ -321,6 +324,10 @@ onMounted(async () => {
             <div class="detail-row">
               <span class="detail-label">申请人：</span>
               <span class="detail-value">{{ currentRequest.applicant }} ({{ currentRequest.applicantTeam }})</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">环境：</span>
+              <span class="detail-value">{{ currentRequest.environment || '-' }}</span>
             </div>
             <div class="detail-row">
               <span class="detail-label">计划时间：</span>

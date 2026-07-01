@@ -22,19 +22,20 @@ api.go
 ----------------------------------------------------------------------
 该文件负责注册并实现所有后端 API 路由。
 
-本版本在原有基础上新增：
-1. SQL 收藏相关接口
-2. 保留已有查询、导出、元数据、管理员用户管理、连接管理功能
+主要功能模块包括：
+1. 用户认证与基础功能：登录、登出、SSO登录、获取当前用户信息、修改密码等。
+2. SQL 操作核心功能：SQL/DDL 语法与风险检测、数据库连接查询、SQL 执行、执行计划 (Explain)、导出 Excel、元数据查询。
+3. SQL 收藏管理：个人收藏的增删改查。
+4. SQL 审核历史：提交审核、查看个人审核记录；管理员审核及记录管理。
+5. 数据库变更申请：普通用户提交变更申请；管理员发布验证。
+6. 数据库数据同步申请：普通用户提交数据同步申请；管理员(DBA)审核执行。
+7. 团队数据库环境管理：普通用户查看环境；管理员维护团队环境信息。
+8. 管理员核心配置：用户管理、数据库连接配置管理与连通性测试。
 
-新增收藏接口：
-1. GET    /api/sql-favorites
-2. POST   /api/sql-favorites
-3. PUT    /api/sql-favorites
-4. DELETE /api/sql-favorites
-
-说明：
-- SQL 收藏接口只要求登录，不要求 admin
-- 每个用户只能操作自己的收藏
+路由权限说明：
+- `/api/admin/*` 路由组：要求必须具备 admin 角色权限 (RequireAdmin 拦截器)。
+- `/api/*` (除白名单外)：要求必须已登录 (RequireLogin 拦截器)。
+- 白名单路由：`/api/hello`, `/api/login`, `/api/sso-login`, `/api/check-sql`, `/api/check-ddl`。
 */
 
 // ----------------------------------------------------------------------
@@ -194,6 +195,7 @@ type DBChangeRequestCreateReq struct {
 type DBChangeRequestUpdateReq struct {
 	ID                int64  `json:"id" binding:"required"`
 	ApplicantTeam     string `json:"applicantTeam" binding:"required"`
+	Environment       string `json:"environment"`
 	PlannedChangeTime string `json:"plannedChangeTime" binding:"required"`
 	UrgencyLevel      string `json:"urgencyLevel" binding:"required"`
 	ChangeType        string `json:"changeType" binding:"required"`
@@ -227,77 +229,154 @@ type DBChangeRequestDeleteReq struct {
 	ID int64 `json:"id" binding:"required"`
 }
 
+// DBDataSyncRequestCreateReq
+// ----------------------------------------------------------------------
+// 新增数据库数据同步申请请求
+type DBDataSyncRequestCreateReq struct {
+	ApplicantTeam         string `json:"applicantTeam"`
+	Environment           string `json:"environment"`
+	ExpectedFinishTime    string `json:"expectedFinishTime" binding:"required"`
+	UrgencyLevel          string `json:"urgencyLevel" binding:"required"`
+	UrgencyReason         string `json:"urgencyReason"`
+	ApplyReason           string `json:"applyReason" binding:"required"`
+	OperateType           int    `json:"operateType" binding:"required"`
+	SourceDb              string `json:"sourceDb" binding:"required"`
+	TargetDbOrPerson      string `json:"targetDbOrPerson" binding:"required"`
+	InvolvedDbSchemaTable string `json:"involvedDbSchemaTable" binding:"required"`
+	DataFilterCondition   string `json:"dataFilterCondition"`
+	EstimatedDataVolume   string `json:"estimatedDataVolume" binding:"required"`
+	ContainsSensitiveData int    `json:"containsSensitiveData"`
+	DesensitizationRule   string `json:"desensitizationRule"`
+}
+
+// DBDataSyncRequestUpdateReq
+// ----------------------------------------------------------------------
+// 编辑数据库数据同步申请请求
+type DBDataSyncRequestUpdateReq struct {
+	ID                    int64  `json:"id" binding:"required"`
+	ApplicantTeam         string `json:"applicantTeam"`
+	Environment           string `json:"environment"`
+	ExpectedFinishTime    string `json:"expectedFinishTime" binding:"required"`
+	UrgencyLevel          string `json:"urgencyLevel" binding:"required"`
+	UrgencyReason         string `json:"urgencyReason"`
+	ApplyReason           string `json:"applyReason" binding:"required"`
+	OperateType           int    `json:"operateType" binding:"required"`
+	SourceDb              string `json:"sourceDb" binding:"required"`
+	TargetDbOrPerson      string `json:"targetDbOrPerson" binding:"required"`
+	InvolvedDbSchemaTable string `json:"involvedDbSchemaTable" binding:"required"`
+	DataFilterCondition   string `json:"dataFilterCondition"`
+	EstimatedDataVolume   string `json:"estimatedDataVolume" binding:"required"`
+	ContainsSensitiveData int    `json:"containsSensitiveData"`
+	DesensitizationRule   string `json:"desensitizationRule"`
+}
+
+// DBDataSyncRequestDeleteReq
+// ----------------------------------------------------------------------
+// 删除数据库数据同步申请请求
+type DBDataSyncRequestDeleteReq struct {
+	ID int64 `json:"id" binding:"required"`
+}
+
+// DBDataSyncRequestDbaReq
+// ----------------------------------------------------------------------
+// 数据库数据同步申请DBA执行更新请求
+type DBDataSyncRequestDbaReq struct {
+	ID         int64  `json:"id" binding:"required"`
+	ExecuteDba string `json:"executeDba" binding:"required"`
+}
+
 // RegisterAPIRoutes
 // ----------------------------------------------------------------------
 // 注册所有 API 路由
 func RegisterAPIRoutes(r *gin.Engine) {
 	api := r.Group("/api")
 	{
+		// 基础测试接口
 		api.GET("/hello", helloHandler)
 
-		api.POST("/check-sql", checkSQLHandler)
-		api.POST("/check-ddl", checkDDLHandler)
+		// 语法检测接口（不需要登录）
+		api.POST("/check-sql", checkSQLHandler) // 检测查询 SQL 的语法及风险
+		api.POST("/check-ddl", checkDDLHandler) // 检测 DDL 语句的语法风险
 
-		api.POST("/login", loginHandler)
-		api.POST("/sso-login", ssoLoginHandler)
-		api.POST("/logout", logoutHandler)
-		api.GET("/auth/me", authMeHandler)
+		// 认证相关接口
+		api.POST("/login", loginHandler)        // 账密登录
+		api.POST("/sso-login", ssoLoginHandler) // SSO 登录
+		api.POST("/logout", logoutHandler)      // 注销登录
+		api.GET("/auth/me", authMeHandler)      // 获取当前登录用户信息
 
 		queryGroup := api.Group("/")
 		queryGroup.Use(middleware.RequireLogin())
 		{
-			queryGroup.POST("/user/change-password", changePasswordHandler)
-			queryGroup.GET("/query-connections", queryConnectionsHandler)
-			queryGroup.POST("/query-data", queryDataHandler)
-			queryGroup.POST("/query-plan", queryPlanHandler)
-			queryGroup.POST("/query-export-excel", queryExportExcelHandler)
-			queryGroup.POST("/query-metadata", queryMetadataHandler)
+			// 个人基础操作
+			queryGroup.POST("/user/change-password", changePasswordHandler) // 用户修改个人密码
+
+			// 核心查询操作
+			queryGroup.GET("/query-connections", queryConnectionsHandler)   // 获取当前用户有权访问的数据库连接列表
+			queryGroup.POST("/query-data", queryDataHandler)                // 执行查询 SQL 获取数据结果
+			queryGroup.POST("/query-plan", queryPlanHandler)                // 获取 SQL 的执行计划 (Explain)
+			queryGroup.POST("/query-export-excel", queryExportExcelHandler) // 导出 SQL 查询结果为 Excel
+			queryGroup.POST("/query-metadata", queryMetadataHandler)        // 查询数据库表及字段元数据
 
 			// SQL 收藏接口：只要求已登录
-			queryGroup.GET("/sql-favorites", listSQLFavoritesHandler)
-			queryGroup.POST("/sql-favorites", createSQLFavoriteHandler)
-			queryGroup.PUT("/sql-favorites", updateSQLFavoriteHandler)
-			queryGroup.DELETE("/sql-favorites", deleteSQLFavoriteHandler)
+			queryGroup.GET("/sql-favorites", listSQLFavoritesHandler)     // 获取个人 SQL 收藏列表
+			queryGroup.POST("/sql-favorites", createSQLFavoriteHandler)   // 添加新的 SQL 收藏
+			queryGroup.PUT("/sql-favorites", updateSQLFavoriteHandler)    // 修改已有的 SQL 收藏
+			queryGroup.DELETE("/sql-favorites", deleteSQLFavoriteHandler) // 删除 SQL 收藏
 
 			// SQL 审核历史接口
-			queryGroup.GET("/audit-history", listAuditHistoryHandler)
-			queryGroup.POST("/audit-submit", submitAuditHandler)
+			queryGroup.GET("/audit-history", listAuditHistoryHandler) // 获取个人的 SQL 审核历史记录
+			queryGroup.POST("/audit-submit", submitAuditHandler)      // 提交待审核的 SQL 记录
 
 			// 数据库变更申请接口
-			queryGroup.GET("/db-change-requests", listDBChangeRequestsHandler)
-			queryGroup.POST("/db-change-requests", createDBChangeRequestHandler)
-			queryGroup.PUT("/db-change-requests", updateDBChangeRequestHandler)
-			queryGroup.DELETE("/db-change-requests", deleteDBChangeRequestHandler)
+			queryGroup.GET("/db-change-requests", listDBChangeRequestsHandler)     // 获取个人提交的数据库变更申请列表
+			queryGroup.POST("/db-change-requests", createDBChangeRequestHandler)   // 提交数据库变更申请
+			queryGroup.PUT("/db-change-requests", updateDBChangeRequestHandler)    // 修改自己提交的变更申请
+			queryGroup.DELETE("/db-change-requests", deleteDBChangeRequestHandler) // 删除自己提交的变更申请
+
+			// 数据库数据同步申请接口
+			queryGroup.GET("/db-data-sync-requests", listDBDataSyncRequestsHandler)     // 获取个人提交的数据同步申请列表
+			queryGroup.POST("/db-data-sync-requests", createDBDataSyncRequestHandler)   // 提交数据同步申请
+			queryGroup.PUT("/db-data-sync-requests", updateDBDataSyncRequestHandler)    // 修改自己提交的数据同步申请
+			queryGroup.DELETE("/db-data-sync-requests", deleteDBDataSyncRequestHandler) // 删除自己提交的数据同步申请
 
 			// 团队数据库环境接口（允许普通用户读取）
-			queryGroup.GET("/team-db-envs", listAllTeamDbEnvsForUserHandler)
+			queryGroup.GET("/team-db-envs", listAllTeamDbEnvsForUserHandler) // 用户查看所有团队数据库环境信息
 		}
 
 		adminGroup := api.Group("/admin")
 		adminGroup.Use(middleware.RequireAdmin())
 		{
-			adminGroup.GET("/users", adminListUsersHandler)
-			adminGroup.POST("/users", adminCreateUserHandler)
-			adminGroup.PUT("/users", adminUpdateUserHandler)
-			adminGroup.DELETE("/users", adminDeleteUserHandler)
+			// 用户管理（管理员功能）
+			adminGroup.GET("/users", adminListUsersHandler)     // 获取系统所有用户列表
+			adminGroup.POST("/users", adminCreateUserHandler)   // 创建新用户
+			adminGroup.PUT("/users", adminUpdateUserHandler)    // 更新用户信息（权限、角色等）
+			adminGroup.DELETE("/users", adminDeleteUserHandler) // 删除用户
 
-			adminGroup.GET("/db-connections", adminListConnectionsHandler)
-			adminGroup.POST("/db-connections", adminCreateConnectionHandler)
-			adminGroup.PUT("/db-connections", adminUpdateConnectionHandler)
-			adminGroup.DELETE("/db-connections", adminDeleteConnectionHandler)
-			adminGroup.POST("/db-connections/test", adminTestConnectionHandler)
+			// 数据库连接配置管理（管理员功能）
+			adminGroup.GET("/db-connections", adminListConnectionsHandler)      // 获取所有系统数据库连接配置
+			adminGroup.POST("/db-connections", adminCreateConnectionHandler)    // 创建新的数据库连接
+			adminGroup.PUT("/db-connections", adminUpdateConnectionHandler)     // 更新数据库连接配置
+			adminGroup.DELETE("/db-connections", adminDeleteConnectionHandler)  // 删除数据库连接配置
+			adminGroup.POST("/db-connections/test", adminTestConnectionHandler) // 测试指定数据库连接的连通性
 
-			adminGroup.GET("/audits", adminListSubmittedAuditsHandler)
-			adminGroup.PUT("/audits/review", adminReviewAuditHandler)
+			// SQL 审核管理（管理员功能）
+			adminGroup.GET("/audits", adminListSubmittedAuditsHandler) // 获取所有已提交待审核的记录
+			adminGroup.PUT("/audits/review", adminReviewAuditHandler)  // 管理员执行审核操作（通过/驳回）
 
-			adminGroup.GET("/db-change-requests/release", adminListReleaseDBChangeRequestsHandler)
-			adminGroup.PUT("/db-change-requests/release", adminReleaseDBChangeRequestHandler)
+			// 数据库变更发布管理（管理员功能）
+			adminGroup.GET("/db-change-requests/release", adminListReleaseDBChangeRequestsHandler) // 获取所有变更申请记录（用于发布验证）
+			adminGroup.PUT("/db-change-requests/release", adminReleaseDBChangeRequestHandler)      // 填写发布人及验证信息
 
-			adminGroup.GET("/team-db-envs", adminListTeamDbEnvsHandler)
-			adminGroup.GET("/team-db-envs/all", adminListAllTeamDbEnvsHandler)
-			adminGroup.POST("/team-db-envs", adminCreateTeamDbEnvHandler)
-			adminGroup.PUT("/team-db-envs", adminUpdateTeamDbEnvHandler)
-			adminGroup.DELETE("/team-db-envs", adminDeleteTeamDbEnvHandler)
+			// 数据库数据同步申请管理员(DBA)接口
+			adminGroup.GET("/db-data-sync-requests/dba", adminListDBDataSyncRequestsForDbaHandler) // DBA获取所有数据同步申请
+			adminGroup.PUT("/db-data-sync-requests/dba", adminUpdateDBDataSyncRequestDbaHandler)   // DBA更新数据同步申请的执行状态
+
+			// 团队数据库环境管理（管理员功能）
+			adminGroup.GET("/team-db-envs", adminListTeamDbEnvsHandler)        // 分页获取团队数据库环境配置
+			adminGroup.GET("/team-db-envs/all", adminListAllTeamDbEnvsHandler) // 获取全量团队数据库环境配置
+			adminGroup.POST("/team-db-envs", adminCreateTeamDbEnvHandler)      // 新增团队数据库环境
+			adminGroup.PUT("/team-db-envs", adminUpdateTeamDbEnvHandler)       // 修改团队数据库环境
+			adminGroup.DELETE("/team-db-envs", adminDeleteTeamDbEnvHandler)    // 删除团队数据库环境
 		}
 	}
 }
@@ -305,7 +384,7 @@ func RegisterAPIRoutes(r *gin.Engine) {
 func helloHandler(c *gin.Context) {
 	name := c.Query("name")
 	if strings.TrimSpace(name) == "" {
-		name = "游客"
+		name = "访客"
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -2221,6 +2300,7 @@ func updateDBChangeRequestHandler(c *gin.Context) {
 		ID:                req.ID,
 		Applicant:         applicant,
 		ApplicantTeam:     req.ApplicantTeam,
+		Environment:       req.Environment,
 		PlannedChangeTime: req.PlannedChangeTime,
 		UrgencyLevel:      req.UrgencyLevel,
 		ChangeType:        req.ChangeType,
@@ -2435,4 +2515,242 @@ func adminDeleteTeamDbEnvHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "删除成功"})
+}
+
+// ----------------------------------------------------------------------
+// 数据库数据同步申请接口
+// ----------------------------------------------------------------------
+
+func listDBDataSyncRequestsHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+
+	applicant := "admin"
+	if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+		applicant = displayName.(string)
+	} else if username, ok := c.Get("currentUsername"); ok && username.(string) != "" {
+		applicant = username.(string)
+	}
+
+	urgencyLevel := c.Query("urgencyLevel")
+	operateType, _ := strconv.Atoi(c.Query("operateType"))
+
+	total, records, err := appsql.QueryDBDataSyncRequests(page, pageSize, applicant, urgencyLevel, operateType)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": err.Error(), "total": 0, "records": []any{}})
+		return
+	}
+
+	if records == nil {
+		records = []appsql.DBDataSyncRequestRecord{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"ok":      true,
+		"message": "获取成功",
+		"total":   total,
+		"records": records,
+	})
+}
+
+func createDBDataSyncRequestHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	applicant := "admin"
+	if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+		applicant = displayName.(string)
+	} else if username, ok := c.Get("currentUsername"); ok && username.(string) != "" {
+		applicant = username.(string)
+	}
+
+	var req DBDataSyncRequestCreateReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	err := appsql.CreateDBDataSyncRequest(appsql.DBDataSyncRequestRecord{
+		Applicant:             applicant,
+		ApplicantTeam:         req.ApplicantTeam,
+		Environment:           req.Environment,
+		ExpectedFinishTime:    req.ExpectedFinishTime,
+		UrgencyLevel:          req.UrgencyLevel,
+		UrgencyReason:         req.UrgencyReason,
+		ApplyReason:           req.ApplyReason,
+		OperateType:           req.OperateType,
+		SourceDb:              req.SourceDb,
+		TargetDbOrPerson:      req.TargetDbOrPerson,
+		InvolvedDbSchemaTable: req.InvolvedDbSchemaTable,
+		DataFilterCondition:   req.DataFilterCondition,
+		EstimatedDataVolume:   req.EstimatedDataVolume,
+		ContainsSensitiveData: req.ContainsSensitiveData,
+		DesensitizationRule:   req.DesensitizationRule,
+	})
+
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "创建失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "申请提交成功"})
+}
+
+func updateDBDataSyncRequestHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	applicant := "admin"
+	if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+		applicant = displayName.(string)
+	} else if username, ok := c.Get("currentUsername"); ok && username.(string) != "" {
+		applicant = username.(string)
+	}
+
+	roleName := "user"
+	if r, ok := c.Get("currentRole"); ok {
+		roleName = r.(string)
+	}
+
+	var req DBDataSyncRequestUpdateReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	err := appsql.UpdateDBDataSyncRequest(appsql.DBDataSyncRequestRecord{
+		ID:                    req.ID,
+		Applicant:             applicant,
+		ApplicantTeam:         req.ApplicantTeam,
+		Environment:           req.Environment,
+		ExpectedFinishTime:    req.ExpectedFinishTime,
+		UrgencyLevel:          req.UrgencyLevel,
+		UrgencyReason:         req.UrgencyReason,
+		ApplyReason:           req.ApplyReason,
+		OperateType:           req.OperateType,
+		SourceDb:              req.SourceDb,
+		TargetDbOrPerson:      req.TargetDbOrPerson,
+		InvolvedDbSchemaTable: req.InvolvedDbSchemaTable,
+		DataFilterCondition:   req.DataFilterCondition,
+		EstimatedDataVolume:   req.EstimatedDataVolume,
+		ContainsSensitiveData: req.ContainsSensitiveData,
+		DesensitizationRule:   req.DesensitizationRule,
+	}, roleName)
+
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "更新失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "申请更新成功"})
+}
+
+func deleteDBDataSyncRequestHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	applicant := "admin"
+	if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+		applicant = displayName.(string)
+	} else if username, ok := c.Get("currentUsername"); ok && username.(string) != "" {
+		applicant = username.(string)
+	}
+
+	roleName := "user"
+	if r, ok := c.Get("currentRole"); ok {
+		roleName = r.(string)
+	}
+
+	var req DBDataSyncRequestDeleteReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	if err := appsql.DeleteDBDataSyncRequest(req.ID, applicant, roleName); err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "删除失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "申请删除成功"})
+}
+
+func adminListDBDataSyncRequestsForDbaHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+
+	applicant := c.Query("applicant")
+	urgencyLevel := c.Query("urgencyLevel")
+	operateType, _ := strconv.Atoi(c.Query("operateType"))
+
+	total, records, err := appsql.QueryDBDataSyncRequests(page, pageSize, applicant, urgencyLevel, operateType)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": err.Error(), "total": 0, "records": []any{}})
+		return
+	}
+
+	if records == nil {
+		records = []appsql.DBDataSyncRequestRecord{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"ok":      true,
+		"message": "获取成功",
+		"total":   total,
+		"records": records,
+	})
+}
+
+func adminUpdateDBDataSyncRequestDbaHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	var req DBDataSyncRequestDbaReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	if err := appsql.UpdateDBDataSyncRequestDBA(req.ID, req.ExecuteDba); err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "更新失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "执行DBA信息更新成功"})
 }

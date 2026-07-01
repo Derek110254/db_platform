@@ -77,7 +77,7 @@ var (
 	reCreateTable = regexp.MustCompile(`(?is)^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_.$"` + "`" + `]+)\s*\((.*)\)\s*(.*)$`)
 
 	//reCreateIndex = regexp.MustCompile(`(?is)^\s*CREATE\s+(UNIQUE\s+)?INDEX\s+([a-zA-Z0-9_.$"` + "`" + `]+)\s+ON\s+([a-zA-Z0-9_.$"` + "`" + `]+)\s*\(([^)]*)\)\s*;?\s*$`)
-	reCreateIndex = regexp.MustCompile(`(?is)^\s*CREATE\s+(UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_.$"` + "`" + `]+)\s+ON\s+([a-zA-Z0-9_.$"` + "`" + `]+)\s*\(([^)]*)\)\s*;?\s*$`)
+	reCreateIndex = regexp.MustCompile(`(?is)^\s*CREATE\s+(UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_.$"` + "`" + `]+)\s+ON\s+([a-zA-Z0-9_.$"` + "`" + `]+)\s*\(([^)]*)\)(?:[\s\S]*?)?;?\s*$`)
 
 	reCreateTableAs = regexp.MustCompile(`(?is)^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_.$"` + "`" + `]+)\s+AS\s+SELECT\s+.*$`)
 

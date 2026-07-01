@@ -11,7 +11,7 @@
  *    - 用户管理
  *    - 查询数据库管理
  *    - SQL 审核管理
- *    - 发布验证管理
+ *    - 数据库变更管理
  *    - 团队数据库环境
  * 4. 登录弹窗
  * 5. 查询历史
@@ -48,6 +48,8 @@ import ChangePasswordDialog from './components/ChangePasswordDialog.vue'
 import DbChangeRequestPanel from './components/DbChangeRequestPanel.vue'
 import AdminDbChangeReleasePanel from './components/AdminDbChangeReleasePanel.vue'
 import AdminTeamDbEnvPanel from './components/AdminTeamDbEnvPanel.vue'
+import DbDataSyncRequestPanel from './components/DbDataSyncRequestPanel.vue'
+import AdminDbDataSyncRequestPanel from './components/AdminDbDataSyncRequestPanel.vue'
 
 /**
  * 数据库类型
@@ -57,7 +59,7 @@ type DBType = 'mysql' | 'oracle'
 /**
  * 页面类型
  */
-type PageType = 'home' | 'query' | 'query-plan' | 'audit-history' | 'admin-users' | 'admin-connections' | 'admin-audits' | 'db-change-requests' | 'admin-db-change-release' | 'admin-team-db-envs'
+type PageType = 'home' | 'query' | 'query-plan' | 'audit-history' | 'admin-users' | 'admin-connections' | 'admin-audits' | 'db-change-requests' | 'db-data-sync-requests' | 'admin-db-change-release' | 'admin-db-data-sync-requests' | 'admin-team-db-envs'
 
 /**
  * 当前登录用户信息
@@ -405,7 +407,7 @@ watch(
     } else if (page === 'db-change-requests') {
       document.title = '数据库变更申请'
     } else if (page === 'admin-db-change-release') {
-      document.title = '发布验证管理'
+      document.title = '数据库变更管理'
     } else if (page === 'admin-team-db-envs') {
       document.title = '团队数据库环境'
     } else {
@@ -1259,10 +1261,26 @@ const scrollToTop = () => {
                 <button
                   v-if="isAdmin"
                   class="user-dropdown-item"
-                  @click="navigateTo('admin-users')"
+                  @click="navigateTo('admin-audits')"
                   type="button"
                 >
-                  用户管理
+                  SQL 审核管理
+                </button>
+                <button
+                  v-if="isAdmin"
+                  class="user-dropdown-item"
+                  @click="navigateTo('admin-db-change-release')"
+                  type="button"
+                >
+                  数据库变更管理
+                </button>
+                <button
+                  v-if="isAdmin"
+                  class="user-dropdown-item"
+                  @click="navigateTo('admin-db-data-sync-requests')"
+                  type="button"
+                >
+                  数据同步管理
                 </button>
                 <button
                   v-if="isAdmin"
@@ -1275,26 +1293,18 @@ const scrollToTop = () => {
                 <button
                   v-if="isAdmin"
                   class="user-dropdown-item"
-                  @click="navigateTo('admin-audits')"
-                  type="button"
-                >
-                  SQL 审核管理
-                </button>
-                <button
-                  v-if="isAdmin"
-                  class="user-dropdown-item"
-                  @click="navigateTo('admin-db-change-release')"
-                  type="button"
-                >
-                  发布验证管理
-                </button>
-                <button
-                  v-if="isAdmin"
-                  class="user-dropdown-item"
                   @click="navigateTo('admin-team-db-envs')"
                   type="button"
                 >
                   团队数据库环境
+                </button>
+                <button
+                  v-if="isAdmin"
+                  class="user-dropdown-item"
+                  @click="navigateTo('admin-users')"
+                  type="button"
+                >
+                  用户管理
                 </button>
                 <div v-if="isAdmin" class="user-dropdown-divider"></div>
                 <button class="user-dropdown-item" @click="openChangePasswordDialog" type="button">
@@ -1350,6 +1360,15 @@ const scrollToTop = () => {
           type="button"
         >
           数据库变更申请
+        </button>
+
+        <button
+          v-if="isAuthenticated"
+          :class="['nav-btn', currentPage === 'db-data-sync-requests' ? 'active' : '']"
+          @click="navigateTo('db-data-sync-requests')"
+          type="button"
+        >
+          数据同步申请
         </button>
 
       </div>
@@ -1516,6 +1535,11 @@ const scrollToTop = () => {
         <DbChangeRequestPanel />
       </template>
 
+      <!-- 数据库数据同步申请页 -->
+      <template v-else-if="currentPage === 'db-data-sync-requests'">
+        <DbDataSyncRequestPanel />
+      </template>
+
       <!-- 管理员页面：用户管理 -->
       <template v-else-if="currentPage === 'admin-users'">
         <AdminUserPanel />
@@ -1531,9 +1555,14 @@ const scrollToTop = () => {
         <AdminAuditPanel />
       </template>
 
-      <!-- 管理员页面：发布验证管理 -->
+      <!-- 管理员页面：数据库变更 -->
       <template v-else-if="currentPage === 'admin-db-change-release'">
         <AdminDbChangeReleasePanel />
+      </template>
+
+      <!-- 管理员页面：数据同步管理 -->
+      <template v-else-if="currentPage === 'admin-db-data-sync-requests'">
+        <AdminDbDataSyncRequestPanel />
       </template>
 
       <!-- 管理员页面：团队数据库环境 -->

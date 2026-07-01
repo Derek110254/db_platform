@@ -239,6 +239,7 @@ CREATE TABLE IF NOT EXISTS platform_db_change_request (
     id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     applicant VARCHAR(64) NOT NULL DEFAULT '' COMMENT '申请人',
     applicant_team VARCHAR(128) NOT NULL DEFAULT '' COMMENT '申请团队',
+    environment VARCHAR(128) NOT NULL DEFAULT '' COMMENT '数据库环境',
     planned_change_time DATETIME NOT NULL COMMENT '计划变更时间',
     urgency_level VARCHAR(16) NOT NULL DEFAULT '常规' COMMENT '紧急程度（常规，紧急）',
     test_publisher VARCHAR(64) NOT NULL DEFAULT '' COMMENT '测试线发布人',
@@ -288,3 +289,32 @@ CREATE TABLE IF NOT EXISTS platform_team_db_env (
     PRIMARY KEY (id),
     KEY idx_team_db_env_team_name (team_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='团队数据库环境配置表';
+
+-- =========================================================
+-- 12. 创建数据库数据同步申请表
+-- ---------------------------------------------------------
+-- =========================================================
+CREATE TABLE IF NOT EXISTS platform_db_data_sync_request (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    applicant VARCHAR(64) NOT NULL DEFAULT '' COMMENT '申请人',
+    applicant_team VARCHAR(128) NOT NULL DEFAULT '' COMMENT '申请团队',
+    environment VARCHAR(128) NOT NULL DEFAULT '' COMMENT '数据库环境',
+    expected_finish_time DATETIME NOT NULL COMMENT '期望完成时间',
+    urgency_level VARCHAR(16) NOT NULL DEFAULT '常规' COMMENT '紧急程度（常规，重要，紧急）',
+    urgency_reason VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '紧急原因',
+    execute_dba VARCHAR(64) NOT NULL DEFAULT '' COMMENT '执行DBA',
+    apply_reason VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '申请原因与目的',
+    operate_type TINYINT NOT NULL DEFAULT 1 COMMENT '操作类型（1:迁移到其他数据库 2:迁移到测试库 3:导出为文件）',
+    source_db VARCHAR(128) NOT NULL DEFAULT '' COMMENT '源数据库',
+    target_db_or_person VARCHAR(128) NOT NULL DEFAULT '' COMMENT '目标库/目标人',
+    involved_db_schema_table VARCHAR(512) NOT NULL DEFAULT '' COMMENT '涉及库名/schema名/表名',
+    data_filter_condition LONGTEXT COMMENT '数据过滤条件',
+    estimated_data_volume VARCHAR(64) NOT NULL DEFAULT '' COMMENT '预估数据量',
+    contains_sensitive_data TINYINT NOT NULL DEFAULT 0 COMMENT '是否包含敏感信息（1:是 0:否）',
+    desensitization_rule LONGTEXT COMMENT '脱敏规则说明',
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_db_data_sync_req_applicant (applicant),
+    KEY idx_db_data_sync_req_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据库数据同步申请表';

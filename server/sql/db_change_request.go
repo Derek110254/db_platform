@@ -27,6 +27,7 @@ type DBChangeRequestRecord struct {
 	ID                int64  `json:"id"`
 	Applicant         string `json:"applicant"`         // 申请人
 	ApplicantTeam     string `json:"applicantTeam"`     // 申请团队
+	Environment       string `json:"environment"`       // 数据库环境
 	PlannedChangeTime string `json:"plannedChangeTime"` // 计划变更时间
 	UrgencyLevel      string `json:"urgencyLevel"`      // 紧急程度
 	TestPublisher     string `json:"testPublisher"`     // 测试线发布人
@@ -61,11 +62,11 @@ func CreateDBChangeRequest(item DBChangeRequestRecord) error {
 
 	query := `
 INSERT INTO platform_db_change_request (
-	applicant, applicant_team, planned_change_time, urgency_level,
+	applicant, applicant_team, environment, planned_change_time, urgency_level,
 	change_type, change_reason,
 	requirement_url, impact_scope, db_type, test_db_ip, test_db_name, test_db_schema, db_ip, db_name, db_schema,
 	change_content
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 	var timeVal interface{} = item.PlannedChangeTime
 	if item.PlannedChangeTime == "" {
@@ -73,7 +74,7 @@ INSERT INTO platform_db_change_request (
 	}
 
 	_, err = db.Exec(query,
-		item.Applicant, item.ApplicantTeam, timeVal, item.UrgencyLevel,
+		item.Applicant, item.ApplicantTeam, item.Environment, timeVal, item.UrgencyLevel,
 		item.ChangeType, item.ChangeReason,
 		item.RequirementUrl, item.ImpactScope, item.DbType, item.TestDbIp, item.TestDbName, item.TestDbSchema, item.DbIp, item.DbName, item.DbSchema,
 		item.ChangeContent,
@@ -123,6 +124,7 @@ func UpdateDBChangeRequest(item DBChangeRequestRecord, roleName string) error {
 UPDATE platform_db_change_request
 SET
 	applicant_team = ?,
+	environment = ?,
 	planned_change_time = ?,
 	urgency_level = ?,
 	change_type = ?,
@@ -146,7 +148,7 @@ SET
 	if roleName == "admin" {
 		query += "WHERE id = ?"
 		_, err = db.Exec(query,
-			item.ApplicantTeam, timeVal, item.UrgencyLevel,
+			item.ApplicantTeam, item.Environment, timeVal, item.UrgencyLevel,
 			item.ChangeType, item.ChangeReason,
 			item.RequirementUrl, item.ImpactScope, item.DbType, item.TestDbIp, item.TestDbName, item.TestDbSchema, item.DbIp, item.DbName, item.DbSchema,
 			item.ChangeContent,
@@ -155,7 +157,7 @@ SET
 	} else {
 		query += "WHERE id = ? AND applicant = ?"
 		_, err = db.Exec(query,
-			item.ApplicantTeam, timeVal, item.UrgencyLevel,
+			item.ApplicantTeam, item.Environment, timeVal, item.UrgencyLevel,
 			item.ChangeType, item.ChangeReason,
 			item.RequirementUrl, item.ImpactScope, item.DbType, item.TestDbIp, item.TestDbName, item.TestDbSchema, item.DbIp, item.DbName, item.DbSchema,
 			item.ChangeContent,
@@ -270,7 +272,7 @@ func QueryDBChangeRequests(page, pageSize int, applicant, applicantTeam, urgency
 
 	query := `
 SELECT 
-	id, applicant, applicant_team, planned_change_time, urgency_level,
+	id, applicant, applicant_team, environment, planned_change_time, urgency_level,
 	test_publisher, prod_publisher,
 	change_type, change_reason,
 	requirement_url, impact_scope, db_type, 
@@ -294,7 +296,7 @@ FROM platform_db_change_request
 		var item DBChangeRequestRecord
 		var plannedTime sql.NullString
 		if err := rows.Scan(
-			&item.ID, &item.Applicant, &item.ApplicantTeam, &plannedTime, &item.UrgencyLevel,
+			&item.ID, &item.Applicant, &item.ApplicantTeam, &item.Environment, &plannedTime, &item.UrgencyLevel,
 			&item.TestPublisher, &item.ProdPublisher,
 			&item.ChangeType, &item.ChangeReason,
 			&item.RequirementUrl, &item.ImpactScope, &item.DbType,
@@ -356,7 +358,7 @@ func QueryDBChangeRequestsForRelease(page, pageSize int, applicantTeam, urgencyL
 
 	query := `
 SELECT 
-	id, applicant, applicant_team, planned_change_time, urgency_level,
+	id, applicant, applicant_team, environment, planned_change_time, urgency_level,
 	test_publisher, prod_publisher,
 	change_type, change_reason,
 	requirement_url, impact_scope, db_type, 
@@ -380,7 +382,7 @@ FROM platform_db_change_request
 		var item DBChangeRequestRecord
 		var plannedTime sql.NullString
 		if err := rows.Scan(
-			&item.ID, &item.Applicant, &item.ApplicantTeam, &plannedTime, &item.UrgencyLevel,
+			&item.ID, &item.Applicant, &item.ApplicantTeam, &item.Environment, &plannedTime, &item.UrgencyLevel,
 			&item.TestPublisher, &item.ProdPublisher,
 			&item.ChangeType, &item.ChangeReason,
 			&item.RequirementUrl, &item.ImpactScope, &item.DbType,

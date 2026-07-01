@@ -13,6 +13,7 @@ interface DBChangeRequest {
   id: number
   applicant: string
   applicantTeam: string
+  environment: string
   plannedChangeTime: string
   urgencyLevel: string
   testPublisher: string
@@ -94,6 +95,7 @@ const handleEnvChange = () => {
       editForm.value.otherDbTypeReason = ''
     }
     
+    editForm.value.environment = env.envName
     editForm.value.testDbIp = env.testDbIp || ''
     editForm.value.testDbName = env.testDbName || ''
     editForm.value.testDbSchema = env.testDbSchema || ''
@@ -122,6 +124,7 @@ const isViewMode = ref(false)
 const defaultForm = {
   id: 0,
   applicantTeam: '',
+  environment: '',
   plannedChangeTime: '',
   urgencyLevel: '常规',
   changeType: [] as string[],
@@ -507,6 +510,7 @@ onMounted(() => {
             <th>ID</th>
             <th>申请人</th>
             <th>申请团队</th>
+            <th>数据库环境</th>
             <th>计划变更时间</th>
             <th>紧急程度</th>
             <th>数据库类型</th>
@@ -528,6 +532,7 @@ onMounted(() => {
             <td>{{ item.id }}</td>
             <td>{{ item.applicant }}</td>
             <td>{{ item.applicantTeam }}</td>
+            <td>{{ item.environment }}</td>
             <td>{{ formatDate(item.plannedChangeTime) }}</td>
             <td>
               <span :class="['tag', item.urgencyLevel === '紧急' ? 'tag-danger' : 'tag-info']">
