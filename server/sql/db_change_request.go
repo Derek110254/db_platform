@@ -44,6 +44,7 @@ type DBChangeRequestRecord struct {
 	DbName            string `json:"dbName"`            // 生产线数据库实例/数据库名
 	DbSchema          string `json:"dbSchema"`          // 生产线数据库schema
 	ChangeContent     string `json:"changeContent"`     // 变更内容
+	BackupTable       string `json:"backupTable"`       // 备份表名，方便后续清理备份数据
 	ReleaseVerifier   string `json:"releaseVerifier"`   // 发布验证人
 	CreateTime        string `json:"createTime"`        // 创建时间
 	UpdateTime        string `json:"updateTime"`        // 更新时间
@@ -65,8 +66,8 @@ INSERT INTO platform_db_change_request (
 	applicant, applicant_team, environment, planned_change_time, urgency_level,
 	change_type, change_reason,
 	requirement_url, impact_scope, db_type, test_db_ip, test_db_name, test_db_schema, db_ip, db_name, db_schema,
-	change_content
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	change_content, backup_table
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 	var timeVal interface{} = item.PlannedChangeTime
 	if item.PlannedChangeTime == "" {
@@ -77,7 +78,7 @@ INSERT INTO platform_db_change_request (
 		item.Applicant, item.ApplicantTeam, item.Environment, timeVal, item.UrgencyLevel,
 		item.ChangeType, item.ChangeReason,
 		item.RequirementUrl, item.ImpactScope, item.DbType, item.TestDbIp, item.TestDbName, item.TestDbSchema, item.DbIp, item.DbName, item.DbSchema,
-		item.ChangeContent,
+		item.ChangeContent, item.BackupTable,
 	)
 	return err
 }
@@ -101,11 +102,11 @@ func UpdateDBChangeRequest(item DBChangeRequestRecord, roleName string) error {
 	}
 
 	// 检查记录是否存在且属于当前用户
-	var testPublisher, prodPublisher, releaseVerifier sql.NullString
+	var testPublisher, prodPublisher sql.NullString
 	if roleName == "admin" {
-		err = db.QueryRow("SELECT test_publisher, prod_publisher, release_verifier FROM platform_db_change_request WHERE id = ?", item.ID).Scan(&testPublisher, &prodPublisher, &releaseVerifier)
+		err = db.QueryRow("SELECT test_publisher, prod_publisher FROM platform_db_change_request WHERE id = ?", item.ID).Scan(&testPublisher, &prodPublisher)
 	} else {
-		err = db.QueryRow("SELECT test_publisher, prod_publisher, release_verifier FROM platform_db_change_request WHERE id = ? AND applicant = ?", item.ID, item.Applicant).Scan(&testPublisher, &prodPublisher, &releaseVerifier)
+		err = db.QueryRow("SELECT test_publisher, prod_publisher FROM platform_db_change_request WHERE id = ? AND applicant = ?", item.ID, item.Applicant).Scan(&testPublisher, &prodPublisher)
 	}
 	if err == sql.ErrNoRows {
 		return errors.New("申请不存在或无权限编辑")
@@ -113,10 +114,9 @@ func UpdateDBChangeRequest(item DBChangeRequestRecord, roleName string) error {
 		return err
 	}
 
-	// 如果三个字段都不为空，说明验证成功，无法编辑
+	// 如果两个发布人字段都不为空，说明验证成功，无法编辑
 	if testPublisher.Valid && strings.TrimSpace(testPublisher.String) != "" &&
-		prodPublisher.Valid && strings.TrimSpace(prodPublisher.String) != "" &&
-		releaseVerifier.Valid && strings.TrimSpace(releaseVerifier.String) != "" {
+		prodPublisher.Valid && strings.TrimSpace(prodPublisher.String) != "" {
 		return errors.New("该申请已经发布验证成功，无法再进行编辑")
 	}
 
@@ -138,7 +138,8 @@ SET
 	db_ip = ?,
 	db_name = ?,
 	db_schema = ?,
-	change_content = ?
+	change_content = ?,
+	backup_table = ?
 `
 	var timeVal interface{} = item.PlannedChangeTime
 	if item.PlannedChangeTime == "" {
@@ -151,7 +152,7 @@ SET
 			item.ApplicantTeam, item.Environment, timeVal, item.UrgencyLevel,
 			item.ChangeType, item.ChangeReason,
 			item.RequirementUrl, item.ImpactScope, item.DbType, item.TestDbIp, item.TestDbName, item.TestDbSchema, item.DbIp, item.DbName, item.DbSchema,
-			item.ChangeContent,
+			item.ChangeContent, item.BackupTable,
 			item.ID,
 		)
 	} else {
@@ -160,7 +161,7 @@ SET
 			item.ApplicantTeam, item.Environment, timeVal, item.UrgencyLevel,
 			item.ChangeType, item.ChangeReason,
 			item.RequirementUrl, item.ImpactScope, item.DbType, item.TestDbIp, item.TestDbName, item.TestDbSchema, item.DbIp, item.DbName, item.DbSchema,
-			item.ChangeContent,
+			item.ChangeContent, item.BackupTable,
 			item.ID, item.Applicant,
 		)
 	}
@@ -189,11 +190,11 @@ func DeleteDBChangeRequest(id int64, applicant string, roleName string) error {
 	}
 
 	// 检查是否已经验证通过
-	var testPublisher, prodPublisher, releaseVerifier sql.NullString
+	var testPublisher, prodPublisher sql.NullString
 	if roleName == "admin" {
-		err = db.QueryRow("SELECT test_publisher, prod_publisher, release_verifier FROM platform_db_change_request WHERE id = ?", id).Scan(&testPublisher, &prodPublisher, &releaseVerifier)
+		err = db.QueryRow("SELECT test_publisher, prod_publisher FROM platform_db_change_request WHERE id = ?", id).Scan(&testPublisher, &prodPublisher)
 	} else {
-		err = db.QueryRow("SELECT test_publisher, prod_publisher, release_verifier FROM platform_db_change_request WHERE id = ? AND applicant = ?", id, applicant).Scan(&testPublisher, &prodPublisher, &releaseVerifier)
+		err = db.QueryRow("SELECT test_publisher, prod_publisher FROM platform_db_change_request WHERE id = ? AND applicant = ?", id, applicant).Scan(&testPublisher, &prodPublisher)
 	}
 	if err == sql.ErrNoRows {
 		return errors.New("申请不存在或无权限删除")
@@ -201,10 +202,9 @@ func DeleteDBChangeRequest(id int64, applicant string, roleName string) error {
 		return err
 	}
 
-	// 如果三个字段都不为空，说明验证成功，无法删除
+	// 如果两个发布人字段都不为空，说明验证成功，无法删除
 	if testPublisher.Valid && strings.TrimSpace(testPublisher.String) != "" &&
-		prodPublisher.Valid && strings.TrimSpace(prodPublisher.String) != "" &&
-		releaseVerifier.Valid && strings.TrimSpace(releaseVerifier.String) != "" {
+		prodPublisher.Valid && strings.TrimSpace(prodPublisher.String) != "" {
 		return errors.New("该申请已经发布验证成功，无法再进行删除")
 	}
 
@@ -271,14 +271,14 @@ func QueryDBChangeRequests(page, pageSize int, applicant, applicantTeam, urgency
 	}
 
 	query := `
-SELECT 
+SELECT
 	id, applicant, applicant_team, environment, planned_change_time, urgency_level,
 	test_publisher, prod_publisher,
 	change_type, change_reason,
-	requirement_url, impact_scope, db_type, 
+	requirement_url, impact_scope, db_type,
 	test_db_ip, test_db_name, test_db_schema,
 	db_ip, db_name, db_schema,
-	change_content, release_verifier, create_time, update_time
+	change_content, backup_table, release_verifier, create_time, update_time
 FROM platform_db_change_request
 ` + baseWhere + ` ORDER BY id DESC LIMIT ? OFFSET ?`
 
@@ -302,7 +302,7 @@ FROM platform_db_change_request
 			&item.RequirementUrl, &item.ImpactScope, &item.DbType,
 			&item.TestDbIp, &item.TestDbName, &item.TestDbSchema,
 			&item.DbIp, &item.DbName, &item.DbSchema,
-			&item.ChangeContent, &item.ReleaseVerifier, &item.CreateTime, &item.UpdateTime,
+			&item.ChangeContent, &item.BackupTable, &item.ReleaseVerifier, &item.CreateTime, &item.UpdateTime,
 		); err != nil {
 			return 0, nil, err
 		}
@@ -332,9 +332,9 @@ func QueryDBChangeRequestsForRelease(page, pageSize int, applicantTeam, urgencyL
 
 	switch isVerified {
 	case "1":
-		baseWhere += " AND (test_publisher != '' AND test_publisher IS NOT NULL AND prod_publisher != '' AND prod_publisher IS NOT NULL AND release_verifier != '' AND release_verifier IS NOT NULL)"
+		baseWhere += " AND (test_publisher != '' AND test_publisher IS NOT NULL AND prod_publisher != '' AND prod_publisher IS NOT NULL)"
 	case "0":
-		baseWhere += " AND (test_publisher = '' OR test_publisher IS NULL OR prod_publisher = '' OR prod_publisher IS NULL OR release_verifier = '' OR release_verifier IS NULL)"
+		baseWhere += " AND (test_publisher = '' OR test_publisher IS NULL OR prod_publisher = '' OR prod_publisher IS NULL)"
 	}
 
 	if applicantTeam = strings.TrimSpace(applicantTeam); applicantTeam != "" {
@@ -357,14 +357,14 @@ func QueryDBChangeRequestsForRelease(page, pageSize int, applicantTeam, urgencyL
 	}
 
 	query := `
-SELECT 
+SELECT
 	id, applicant, applicant_team, environment, planned_change_time, urgency_level,
 	test_publisher, prod_publisher,
 	change_type, change_reason,
-	requirement_url, impact_scope, db_type, 
+	requirement_url, impact_scope, db_type,
 	test_db_ip, test_db_name, test_db_schema,
 	db_ip, db_name, db_schema,
-	change_content, release_verifier, create_time, update_time
+	change_content, backup_table, release_verifier, create_time, update_time
 FROM platform_db_change_request
 ` + baseWhere + ` ORDER BY id DESC LIMIT ? OFFSET ?`
 
@@ -388,7 +388,7 @@ FROM platform_db_change_request
 			&item.RequirementUrl, &item.ImpactScope, &item.DbType,
 			&item.TestDbIp, &item.TestDbName, &item.TestDbSchema,
 			&item.DbIp, &item.DbName, &item.DbSchema,
-			&item.ChangeContent, &item.ReleaseVerifier, &item.CreateTime, &item.UpdateTime,
+			&item.ChangeContent, &item.BackupTable, &item.ReleaseVerifier, &item.CreateTime, &item.UpdateTime,
 		); err != nil {
 			return 0, nil, err
 		}
@@ -408,8 +408,7 @@ FROM platform_db_change_request
 // 更新记录的以下字段：
 // - 测试线发布人 (test_publisher)
 // - 生产线发布人 (prod_publisher)
-// - 发布验证人 (release_verifier)
-func UpdateDBChangeRequestRelease(id int64, testPublisher, prodPublisher, releaseVerifier string) error {
+func UpdateDBChangeRequestRelease(id int64, testPublisher, prodPublisher string) error {
 	db, err := config.GetPlatformDB()
 	if err != nil {
 		return err
@@ -423,11 +422,10 @@ func UpdateDBChangeRequestRelease(id int64, testPublisher, prodPublisher, releas
 UPDATE platform_db_change_request
 SET
 	test_publisher = ?,
-	prod_publisher = ?,
-	release_verifier = ?
+	prod_publisher = ?
 WHERE id = ?
 `
-	res, err := db.Exec(query, testPublisher, prodPublisher, releaseVerifier, id)
+	res, err := db.Exec(query, testPublisher, prodPublisher, id)
 	if err != nil {
 		return err
 	}
@@ -435,6 +433,63 @@ WHERE id = ?
 	affected, _ := res.RowsAffected()
 	if affected == 0 {
 		return errors.New("申请不存在")
+	}
+
+	return nil
+}
+
+// VerifyDBChangeRequest
+// ------------------------------------------------------------
+// 申请人验证发布结果。
+//
+// 业务逻辑与权限控制：
+//  1. 根据当前用户的 roleName 判断权限，admin 可验证所有记录，普通用户只能验证自己的申请。
+//  2. 检查两个发布人（test_publisher、prod_publisher）是否都已填写，未发布完成不允许验证。
+//  3. 检查 release_verifier 是否已填写，避免重复验证。
+//  4. 将 release_verifier 设置为申请人姓名，表示该变更申请彻底完结。
+func VerifyDBChangeRequest(id int64, applicant string, roleName string) error {
+	db, err := config.GetPlatformDB()
+	if err != nil {
+		return err
+	}
+
+	if id <= 0 {
+		return errors.New("变更申请ID不能为空")
+	}
+
+	// 检查记录是否存在、属于当前用户，并获取发布人 + 验证人信息
+	var testPublisher, prodPublisher, releaseVerifier sql.NullString
+	if roleName == "admin" {
+		err = db.QueryRow("SELECT test_publisher, prod_publisher, release_verifier FROM platform_db_change_request WHERE id = ?", id).Scan(&testPublisher, &prodPublisher, &releaseVerifier)
+	} else {
+		err = db.QueryRow("SELECT test_publisher, prod_publisher, release_verifier FROM platform_db_change_request WHERE id = ? AND applicant = ?", id, applicant).Scan(&testPublisher, &prodPublisher, &releaseVerifier)
+	}
+	if err == sql.ErrNoRows {
+		return errors.New("申请不存在或无权限验证")
+	} else if err != nil {
+		return err
+	}
+
+	// 检查两个发布人都已填写
+	if !testPublisher.Valid || strings.TrimSpace(testPublisher.String) == "" ||
+		!prodPublisher.Valid || strings.TrimSpace(prodPublisher.String) == "" {
+		return errors.New("发布人尚未填写完整，无法验证")
+	}
+
+	// 检查是否已验证
+	if releaseVerifier.Valid && strings.TrimSpace(releaseVerifier.String) != "" {
+		return errors.New("该申请已验证，无需重复验证")
+	}
+
+	query := `UPDATE platform_db_change_request SET release_verifier = ? WHERE id = ?`
+	res, err := db.Exec(query, applicant, id)
+	if err != nil {
+		return err
+	}
+
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return errors.New("验证失败，申请可能已被修改")
 	}
 
 	return nil

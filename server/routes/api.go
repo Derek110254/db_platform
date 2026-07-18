@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -57,6 +58,12 @@ type QueryPlanRequest struct {
 	SQL            string `json:"sql"`
 }
 
+type ManualQueryPlanRequest struct {
+	ConnectionName string `json:"connectionName"`
+	SQL            string `json:"sql"`
+	ExecutionPlan  string `json:"executionPlan"`
+}
+
 type QueryMetadataRequest struct {
 	ConnectionName string `json:"connectionName"`
 	Keyword        string `json:"keyword"`
@@ -96,7 +103,6 @@ type AdminDeleteUserRequest struct {
 
 type AdminCreateConnectionRequest struct {
 	Name         string `json:"name"`
-	Label        string `json:"label"`
 	DBType       string `json:"dbType"`
 	Host         string `json:"host"`
 	Port         int    `json:"port"`
@@ -105,12 +111,12 @@ type AdminCreateConnectionRequest struct {
 	DatabaseName string `json:"databaseName"`
 	ServiceName  string `json:"serviceName"`
 	IsEnabled    int    `json:"isEnabled"`
+	CanConnect   int    `json:"canConnect"`
 }
 
 type AdminUpdateConnectionRequest struct {
 	ID           int64  `json:"id"`
 	Name         string `json:"name"`
-	Label        string `json:"label"`
 	DBType       string `json:"dbType"`
 	Host         string `json:"host"`
 	Port         int    `json:"port"`
@@ -119,6 +125,7 @@ type AdminUpdateConnectionRequest struct {
 	DatabaseName string `json:"databaseName"`
 	ServiceName  string `json:"serviceName"`
 	IsEnabled    int    `json:"isEnabled"`
+	CanConnect   int    `json:"canConnect"`
 }
 
 type AdminDeleteConnectionRequest struct {
@@ -187,6 +194,7 @@ type DBChangeRequestCreateReq struct {
 	DbName            string `json:"dbName"`
 	DbSchema          string `json:"dbSchema"`
 	ChangeContent     string `json:"changeContent" binding:"required"`
+	BackupTable       string `json:"backupTable"`
 }
 
 // DBChangeRequestUpdateReq
@@ -210,22 +218,29 @@ type DBChangeRequestUpdateReq struct {
 	DbName            string `json:"dbName"`
 	DbSchema          string `json:"dbSchema"`
 	ChangeContent     string `json:"changeContent" binding:"required"`
+	BackupTable       string `json:"backupTable"`
 }
 
 // DBChangeRequestReleaseReq
 // ----------------------------------------------------------------------
 // 数据库变更申请发布验证请求
 type DBChangeRequestReleaseReq struct {
-	ID              int64  `json:"id" binding:"required"`
-	TestPublisher   string `json:"testPublisher"`
-	ProdPublisher   string `json:"prodPublisher"`
-	ReleaseVerifier string `json:"releaseVerifier"`
+	ID            int64  `json:"id" binding:"required"`
+	TestPublisher string `json:"testPublisher"`
+	ProdPublisher string `json:"prodPublisher"`
 }
 
 // DBChangeRequestDeleteReq
 // ----------------------------------------------------------------------
 // 删除数据库变更申请请求
 type DBChangeRequestDeleteReq struct {
+	ID int64 `json:"id" binding:"required"`
+}
+
+// DBChangeRequestVerifyReq
+// ----------------------------------------------------------------------
+// 申请人验证发布结果请求
+type DBChangeRequestVerifyReq struct {
 	ID int64 `json:"id" binding:"required"`
 }
 
@@ -285,6 +300,116 @@ type DBDataSyncRequestDbaReq struct {
 	ExecuteDba string `json:"executeDba" binding:"required"`
 }
 
+// DBAlertHandleCreateReq
+// ----------------------------------------------------------------------
+// 新增数据库告警处理记录请求
+type DBAlertHandleCreateReq struct {
+	DBType          string `json:"dbType" binding:"required"`
+	AlertLevel      string `json:"alertLevel" binding:"required"`
+	AlertCategory   string `json:"alertCategory" binding:"required"`
+	AlertContent    string `json:"alertContent" binding:"required"`
+	ImpactScope     string `json:"impactScope"`
+	AlertTime       string `json:"alertTime" binding:"required"`
+	HandleStartTime string `json:"handleStartTime"`
+	HandleEndTime   string `json:"handleEndTime"`
+	HandleResult    string `json:"handleResult"`
+}
+
+// DBAlertHandleUpdateReq
+// ----------------------------------------------------------------------
+// 编辑数据库告警处理记录请求
+type DBAlertHandleUpdateReq struct {
+	ID              int64  `json:"id" binding:"required"`
+	DBType          string `json:"dbType" binding:"required"`
+	AlertLevel      string `json:"alertLevel" binding:"required"`
+	AlertCategory   string `json:"alertCategory" binding:"required"`
+	AlertContent    string `json:"alertContent" binding:"required"`
+	ImpactScope     string `json:"impactScope"`
+	AlertTime       string `json:"alertTime" binding:"required"`
+	HandleStartTime string `json:"handleStartTime"`
+	HandleEndTime   string `json:"handleEndTime"`
+	HandleResult    string `json:"handleResult"`
+}
+
+// DBAlertHandleDeleteReq
+// ----------------------------------------------------------------------
+// 删除数据库告警处理记录请求
+type DBAlertHandleDeleteReq struct {
+	ID int64 `json:"id" binding:"required"`
+}
+
+// DBAlertHandleResultReq
+// ----------------------------------------------------------------------
+// 管理员更新告警处理结果请求
+type DBAlertHandleResultReq struct {
+	ID              int64  `json:"id" binding:"required"`
+	Handler         string `json:"handler" binding:"required"`
+	HandleStartTime string `json:"handleStartTime"`
+	HandleEndTime   string `json:"handleEndTime"`
+	HandleResult    string `json:"handleResult" binding:"required"`
+}
+
+// OpsChangeCreateReq
+// ----------------------------------------------------------------------
+// 新增运维变更记录请求
+type OpsChangeCreateReq struct {
+	ChangeTitle   string `json:"changeTitle" binding:"required"`
+	ChangeType    string `json:"changeType" binding:"required"`
+	ChangeLevel   string `json:"changeLevel" binding:"required"`
+	ChangeContent string `json:"changeContent" binding:"required"`
+	ImpactScope   string `json:"impactScope"`
+	ChangeIPList  string `json:"changeIpList"`
+	ChangeTime    string `json:"changeTime" binding:"required"`
+	RollbackPlan  string `json:"rollbackPlan"`
+	Remark        string `json:"remark"`
+}
+
+// OpsChangeUpdateReq
+// ----------------------------------------------------------------------
+// 编辑运维变更记录请求
+type OpsChangeUpdateReq struct {
+	ID            int64  `json:"id" binding:"required"`
+	ChangeTitle   string `json:"changeTitle" binding:"required"`
+	ChangeType    string `json:"changeType" binding:"required"`
+	ChangeLevel   string `json:"changeLevel" binding:"required"`
+	ChangeContent string `json:"changeContent" binding:"required"`
+	ImpactScope   string `json:"impactScope"`
+	ChangeIPList  string `json:"changeIpList"`
+	ChangeTime    string `json:"changeTime" binding:"required"`
+	RollbackPlan  string `json:"rollbackPlan"`
+	Remark        string `json:"remark"`
+}
+
+// OpsChangeDeleteReq
+// ----------------------------------------------------------------------
+// 删除运维变更记录请求
+type OpsChangeDeleteReq struct {
+	ID int64 `json:"id" binding:"required"`
+}
+
+// OpsChangeResultReq
+// ----------------------------------------------------------------------
+// 管理员确认变更结果请求
+type OpsChangeResultReq struct {
+	ID           int64  `json:"id" binding:"required"`
+	ChangeResult string `json:"changeResult" binding:"required"`
+}
+
+// OpsChangeRollbackReq
+// ----------------------------------------------------------------------
+// 管理员确认回滚状态请求
+type OpsChangeRollbackReq struct {
+	ID             int64  `json:"id" binding:"required"`
+	RollbackStatus string `json:"rollbackStatus" binding:"required"`
+}
+
+// OpsChangeReviewerReq
+// ----------------------------------------------------------------------
+// 管理员更新复核人请求
+type OpsChangeReviewerReq struct {
+	ID int64 `json:"id" binding:"required"`
+}
+
 // RegisterAPIRoutes
 // ----------------------------------------------------------------------
 // 注册所有 API 路由
@@ -293,16 +418,18 @@ func RegisterAPIRoutes(r *gin.Engine) {
 	{
 		// 基础测试接口
 		api.GET("/hello", helloHandler)
+		api.GET("/dashboard", dashboardHandler) // 首屏看板统计数据
 
 		// 语法检测接口（不需要登录）
 		api.POST("/check-sql", checkSQLHandler) // 检测查询 SQL 的语法及风险
 		api.POST("/check-ddl", checkDDLHandler) // 检测 DDL 语句的语法风险
 
 		// 认证相关接口
-		api.POST("/login", loginHandler)        // 账密登录
-		api.POST("/sso-login", ssoLoginHandler) // SSO 登录
-		api.POST("/logout", logoutHandler)      // 注销登录
-		api.GET("/auth/me", authMeHandler)      // 获取当前登录用户信息
+		api.POST("/login", loginHandler)         // 账密登录
+		api.POST("/sso-login", ssoLoginHandler)  // SSO 登录
+		api.GET("/sso-config", ssoConfigHandler) // 获取 SSO 配置（白名单，无需登录）
+		api.POST("/logout", logoutHandler)       // 注销登录
+		api.GET("/auth/me", authMeHandler)       // 获取当前登录用户信息
 
 		queryGroup := api.Group("/")
 		queryGroup.Use(middleware.RequireLogin())
@@ -314,6 +441,7 @@ func RegisterAPIRoutes(r *gin.Engine) {
 			queryGroup.GET("/query-connections", queryConnectionsHandler)   // 获取当前用户有权访问的数据库连接列表
 			queryGroup.POST("/query-data", queryDataHandler)                // 执行查询 SQL 获取数据结果
 			queryGroup.POST("/query-plan", queryPlanHandler)                // 获取 SQL 的执行计划 (Explain)
+			queryGroup.POST("/query-plan/manual", manualQueryPlanHandler)   // 手动提交执行计划进行性能检测
 			queryGroup.POST("/query-export-excel", queryExportExcelHandler) // 导出 SQL 查询结果为 Excel
 			queryGroup.POST("/query-metadata", queryMetadataHandler)        // 查询数据库表及字段元数据
 
@@ -328,10 +456,11 @@ func RegisterAPIRoutes(r *gin.Engine) {
 			queryGroup.POST("/audit-submit", submitAuditHandler)      // 提交待审核的 SQL 记录
 
 			// 数据库变更申请接口
-			queryGroup.GET("/db-change-requests", listDBChangeRequestsHandler)     // 获取个人提交的数据库变更申请列表
-			queryGroup.POST("/db-change-requests", createDBChangeRequestHandler)   // 提交数据库变更申请
-			queryGroup.PUT("/db-change-requests", updateDBChangeRequestHandler)    // 修改自己提交的变更申请
-			queryGroup.DELETE("/db-change-requests", deleteDBChangeRequestHandler) // 删除自己提交的变更申请
+			queryGroup.GET("/db-change-requests", listDBChangeRequestsHandler)         // 获取个人提交的数据库变更申请列表
+			queryGroup.POST("/db-change-requests", createDBChangeRequestHandler)       // 提交数据库变更申请
+			queryGroup.PUT("/db-change-requests", updateDBChangeRequestHandler)        // 修改自己提交的变更申请
+			queryGroup.DELETE("/db-change-requests", deleteDBChangeRequestHandler)     // 删除自己提交的变更申请
+			queryGroup.PUT("/db-change-requests/verify", verifyDBChangeRequestHandler) // 申请人验证发布结果
 
 			// 数据库数据同步申请接口
 			queryGroup.GET("/db-data-sync-requests", listDBDataSyncRequestsHandler)     // 获取个人提交的数据同步申请列表
@@ -341,6 +470,18 @@ func RegisterAPIRoutes(r *gin.Engine) {
 
 			// 团队数据库环境接口（允许普通用户读取）
 			queryGroup.GET("/team-db-envs", listAllTeamDbEnvsForUserHandler) // 用户查看所有团队数据库环境信息
+
+			// 数据库告警处理接口
+			queryGroup.GET("/db-alert-handles", listDBAlertHandlesHandler)     // 获取个人提交的告警处理记录列表
+			queryGroup.POST("/db-alert-handles", createDBAlertHandleHandler)   // 新增告警处理记录
+			queryGroup.PUT("/db-alert-handles", updateDBAlertHandleHandler)    // 修改自己的告警处理记录
+			queryGroup.DELETE("/db-alert-handles", deleteDBAlertHandleHandler) // 删除自己的告警处理记录
+
+			// 运维变更记录接口
+			queryGroup.GET("/ops-change-records", listOpsChangeRecordsHandler)     // 获取个人提交的运维变更记录列表
+			queryGroup.POST("/ops-change-records", createOpsChangeRecordHandler)   // 新增运维变更记录
+			queryGroup.PUT("/ops-change-records", updateOpsChangeRecordHandler)    // 修改自己的运维变更记录
+			queryGroup.DELETE("/ops-change-records", deleteOpsChangeRecordHandler) // 删除自己的运维变更记录
 		}
 
 		adminGroup := api.Group("/admin")
@@ -377,6 +518,16 @@ func RegisterAPIRoutes(r *gin.Engine) {
 			adminGroup.POST("/team-db-envs", adminCreateTeamDbEnvHandler)      // 新增团队数据库环境
 			adminGroup.PUT("/team-db-envs", adminUpdateTeamDbEnvHandler)       // 修改团队数据库环境
 			adminGroup.DELETE("/team-db-envs", adminDeleteTeamDbEnvHandler)    // 删除团队数据库环境
+
+			// 数据库告警处理管理（管理员功能）
+			adminGroup.GET("/db-alert-handles", adminListDBAlertHandlesHandler)               // 获取所有告警处理记录
+			adminGroup.PUT("/db-alert-handles/result", adminUpdateDBAlertHandleResultHandler) // 更新告警处理结果
+
+			// 运维变更记录管理（管理员功能）
+			adminGroup.GET("/ops-change-records", adminListOpsChangeRecordsHandler)             // 获取所有运维变更记录
+			adminGroup.PUT("/ops-change-records/result", adminUpdateOpsChangeResultHandler)     // 确认变更结果
+			adminGroup.PUT("/ops-change-records/rollback", adminUpdateOpsChangeRollbackHandler) // 确认回滚状态
+			adminGroup.PUT("/ops-change-records/reviewer", adminUpdateOpsChangeReviewerHandler) // 更新复核人
 		}
 	}
 }
@@ -389,6 +540,70 @@ func helloHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "你好，" + name + "！欢迎使用SQL管理平台",
+	})
+}
+
+func dashboardHandler(c *gin.Context) {
+	db, err := config.GetPlatformDB()
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "数据库连接失败"})
+		return
+	}
+
+	stats := gin.H{"ok": true}
+
+	// 用户数
+	var userCount int
+	db.QueryRow("SELECT COUNT(1) FROM platform_user WHERE is_deleted = 0").Scan(&userCount)
+	stats["userCount"] = userCount
+
+	// 连接数
+	var connCount int
+	db.QueryRow("SELECT COUNT(1) FROM platform_db_connection WHERE is_enabled = 1").Scan(&connCount)
+	stats["connCount"] = connCount
+
+	// 今日 SQL 检测数
+	var todayAudit int
+	db.QueryRow("SELECT COUNT(1) FROM platform_sql_audit WHERE DATE(create_time) = CURDATE()").Scan(&todayAudit)
+	stats["todayAudit"] = todayAudit
+
+	// 待审核 SQL 数
+	var pendingAudit int
+	db.QueryRow("SELECT COUNT(1) FROM platform_sql_audit WHERE submit_audit > 0 AND audit_passed = 0").Scan(&pendingAudit)
+	stats["pendingAudit"] = pendingAudit
+
+	// 变更申请数
+	var changeReqCount int
+	db.QueryRow("SELECT COUNT(1) FROM platform_db_change_request").Scan(&changeReqCount)
+	stats["changeReqCount"] = changeReqCount
+
+	// 待验证变更数
+	var pendingVerifyChange int
+	db.QueryRow("SELECT COUNT(1) FROM platform_db_change_request WHERE release_verifier = '' OR release_verifier IS NULL").Scan(&pendingVerifyChange)
+	stats["pendingVerifyChange"] = pendingVerifyChange
+
+	// 告警记录数
+	var alertCount int
+	db.QueryRow("SELECT COUNT(1) FROM platform_db_alert_handle").Scan(&alertCount)
+	stats["alertCount"] = alertCount
+
+	// 运维变更记录数
+	var opsChangeCount int
+	db.QueryRow("SELECT COUNT(1) FROM platform_ops_change_record").Scan(&opsChangeCount)
+	stats["opsChangeCount"] = opsChangeCount
+
+	// 待复核运维变更数
+	var pendingReviewOps int
+	db.QueryRow("SELECT COUNT(1) FROM platform_ops_change_record WHERE change_result = '待复核'").Scan(&pendingReviewOps)
+	stats["pendingReviewOps"] = pendingReviewOps
+
+	c.JSON(http.StatusOK, stats)
+}
+
+func ssoConfigHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"ok":       true,
+		"loginUrl": config.SSOLoginUrl,
 	})
 }
 
@@ -465,8 +680,8 @@ func loginHandler(c *gin.Context) {
 }
 
 type SSOLoginRequest struct {
-	Username string `json:"username"`
-	Token    string `json:"token"`
+	Token string `json:"token" binding:"required"`
+	UrlId string `json:"urlId"`
 }
 
 func ssoLoginHandler(c *gin.Context) {
@@ -479,17 +694,34 @@ func ssoLoginHandler(c *gin.Context) {
 		return
 	}
 
-	username := strings.TrimSpace(req.Username)
-	if username == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
+	// 修复：浏览器可能将 + 转为空格，还原回来
+	rawToken := strings.ReplaceAll(req.Token, " ", "+")
+
+	// urlId 默认用后端配置值
+	urlId := strings.TrimSpace(req.UrlId)
+	if urlId == "" {
+		urlId = config.SSOUrlId
+	}
+
+	// 后端完成 RSA 加密 + SSO API 调用 + 用户名解析
+	ssoResult, err := auth.VerifySSOToken(rawToken, urlId)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
 			"ok":      false,
-			"message": "用户名不能为空",
+			"message": "SSO验证异常：" + err.Error(),
+		})
+		return
+	}
+	if !ssoResult.Success {
+		c.JSON(http.StatusOK, gin.H{
+			"ok":      false,
+			"message": ssoResult.Message,
 		})
 		return
 	}
 
-	// 使用拿到的 username 查 platform_user 获取权限并生成 session
-	user, token, err := auth.LoginByUsername(username)
+	// 使用 username 查 platform_user 获取权限并生成 session
+	user, token, err := auth.LoginByUsername(ssoResult.Username)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"ok":      false,
@@ -701,12 +933,12 @@ func queryConnectionsHandler(c *gin.Context) {
 	for _, item := range connections {
 		items = append(items, gin.H{
 			"name":        item.Name,
-			"label":       item.Label,
 			"dbType":      item.DBType,
 			"host":        item.Host,
 			"port":        item.Port,
 			"database":    item.DatabaseName,
 			"serviceName": item.ServiceName,
+			"canConnect":  item.CanConnect,
 		})
 	}
 
@@ -787,6 +1019,43 @@ func queryPlanHandler(c *gin.Context) {
 		roleName,
 		req.ConnectionName,
 		req.SQL,
+	)
+	c.JSON(http.StatusOK, result)
+}
+
+func manualQueryPlanHandler(c *gin.Context) {
+	var req ManualQueryPlanRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"ok":        false,
+			"message":   "请求格式错误：" + err.Error(),
+			"columns":   []string{},
+			"rows":      []any{},
+			"rowCount":  0,
+			"elapsedMs": 0,
+		})
+		return
+	}
+
+	userID, roleName, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"ok":        false,
+			"message":   "登录状态失效",
+			"columns":   []string{},
+			"rows":      []any{},
+			"rowCount":  0,
+			"elapsedMs": 0,
+		})
+		return
+	}
+
+	result := appsql.ManualExplainQuery(
+		userID,
+		roleName,
+		req.ConnectionName,
+		req.SQL,
+		req.ExecutionPlan,
 	)
 	c.JSON(http.StatusOK, result)
 }
@@ -1510,7 +1779,7 @@ func adminListConnectionsHandler(c *gin.Context) {
 	}
 
 	rows, err := db.Query(`
-SELECT id, name, label, db_type, host, port, username, database_name, service_name, is_enabled, create_time, update_time
+SELECT id, name, db_type, host, port, username, database_name, service_name, is_enabled, can_connect, create_time, update_time
 FROM platform_db_connection
 ORDER BY id DESC
 `)
@@ -1526,14 +1795,13 @@ ORDER BY id DESC
 	items := make([]gin.H, 0)
 	for rows.Next() {
 		var id int64
-		var name, label, dbType, host, username, databaseName, serviceName string
-		var port, isEnabled int
+		var name, dbType, host, username, databaseName, serviceName string
+		var port, isEnabled, canConnect int
 		var createTime, updateTime string
 
 		if err := rows.Scan(
 			&id,
 			&name,
-			&label,
 			&dbType,
 			&host,
 			&port,
@@ -1541,6 +1809,7 @@ ORDER BY id DESC
 			&databaseName,
 			&serviceName,
 			&isEnabled,
+			&canConnect,
 			&createTime,
 			&updateTime,
 		); err != nil {
@@ -1554,7 +1823,6 @@ ORDER BY id DESC
 		items = append(items, gin.H{
 			"id":           id,
 			"name":         name,
-			"label":        label,
 			"dbType":       dbType,
 			"host":         host,
 			"port":         port,
@@ -1562,6 +1830,7 @@ ORDER BY id DESC
 			"databaseName": databaseName,
 			"serviceName":  serviceName,
 			"isEnabled":    isEnabled,
+			"canConnect":   canConnect,
 			"createTime":   createTime,
 			"updateTime":   updateTime,
 		})
@@ -1584,7 +1853,6 @@ func adminCreateConnectionHandler(c *gin.Context) {
 	}
 
 	req.Name = strings.TrimSpace(req.Name)
-	req.Label = strings.TrimSpace(req.Label)
 	req.DBType = strings.ToLower(strings.TrimSpace(req.DBType))
 	req.Host = strings.TrimSpace(req.Host)
 	req.Username = strings.TrimSpace(req.Username)
@@ -1592,7 +1860,7 @@ func adminCreateConnectionHandler(c *gin.Context) {
 	req.DatabaseName = strings.TrimSpace(req.DatabaseName)
 	req.ServiceName = strings.TrimSpace(req.ServiceName)
 
-	if req.Name == "" || req.Label == "" || req.DBType == "" || req.Host == "" || req.Port <= 0 || req.Username == "" || req.Password == "" {
+	if req.Name == "" || req.DBType == "" || req.Host == "" || req.Port <= 0 || req.Username == "" || req.Password == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"ok":      false,
 			"message": "连接名称、展示名称、数据库类型、主机、端口、用户名、密码不能为空",
@@ -1656,7 +1924,6 @@ func adminCreateConnectionHandler(c *gin.Context) {
 	_, err = db.Exec(`
 INSERT INTO platform_db_connection (
     name,
-    label,
     db_type,
     host,
     port,
@@ -1664,9 +1931,9 @@ INSERT INTO platform_db_connection (
     password_cipher,
     database_name,
     service_name,
-    is_enabled
+    is_enabled,
+    can_connect
 ) VALUES (
-    ?,
     ?,
     ?,
     ?,
@@ -1675,9 +1942,10 @@ INSERT INTO platform_db_connection (
     fixed_aes_encrypt(?),
     ?,
     ?,
+    ?,
     ?
 )
-`, req.Name, req.Label, req.DBType, req.Host, req.Port, req.Username, req.Password, req.DatabaseName, req.ServiceName, req.IsEnabled)
+`, req.Name, req.DBType, req.Host, req.Port, req.Username, req.Password, req.DatabaseName, req.ServiceName, req.IsEnabled, req.CanConnect)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":      false,
@@ -1703,7 +1971,6 @@ func adminUpdateConnectionHandler(c *gin.Context) {
 	}
 
 	req.Name = strings.TrimSpace(req.Name)
-	req.Label = strings.TrimSpace(req.Label)
 	req.DBType = strings.ToLower(strings.TrimSpace(req.DBType))
 	req.Host = strings.TrimSpace(req.Host)
 	req.Username = strings.TrimSpace(req.Username)
@@ -1718,7 +1985,7 @@ func adminUpdateConnectionHandler(c *gin.Context) {
 		})
 		return
 	}
-	if req.Name == "" || req.Label == "" || req.DBType == "" || req.Host == "" || req.Port <= 0 || req.Username == "" {
+	if req.Name == "" || req.DBType == "" || req.Host == "" || req.Port <= 0 || req.Username == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"ok":      false,
 			"message": "连接名称、展示名称、数据库类型、主机、端口、用户名不能为空",
@@ -1749,6 +2016,9 @@ func adminUpdateConnectionHandler(c *gin.Context) {
 	if req.IsEnabled != 0 {
 		req.IsEnabled = 1
 	}
+	if req.CanConnect != 0 {
+		req.CanConnect = 1
+	}
 
 	db, err := config.GetPlatformDB()
 	if err != nil {
@@ -1759,6 +2029,7 @@ func adminUpdateConnectionHandler(c *gin.Context) {
 		return
 	}
 
+	// 读取当前连接名称，用于判断是否需要级联更新
 	var currentName string
 	if err := db.QueryRow(`SELECT name FROM platform_db_connection WHERE id = ?`, req.ID).Scan(&currentName); err != nil {
 		if err == sql.ErrNoRows {
@@ -1774,31 +2045,84 @@ func adminUpdateConnectionHandler(c *gin.Context) {
 		})
 		return
 	}
-	if currentName != req.Name {
-		c.JSON(http.StatusBadRequest, gin.H{
+
+	// 如果修改了连接名称，检查新名称是否已被占用
+	nameChanged := currentName != req.Name
+	if nameChanged {
+		var count int
+		if err := db.QueryRow(`SELECT COUNT(1) FROM platform_db_connection WHERE name = ? AND id != ?`, req.Name, req.ID).Scan(&count); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"ok":      false,
+				"message": "检查连接名称失败：" + err.Error(),
+			})
+			return
+		}
+		if count > 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"ok":      false,
+				"message": "连接名称已存在",
+			})
+			return
+		}
+	}
+
+	// 使用事务，确保连接名称修改和级联更新原子性
+	tx, err := db.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":      false,
-			"message": "当前版本不支持修改连接名称",
+			"message": "开启事务失败：" + err.Error(),
 		})
 		return
 	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	if req.Password == "" {
-		_, err = db.Exec(`
+		_, err = tx.Exec(`
 UPDATE platform_db_connection
-SET label = ?, db_type = ?, host = ?, port = ?, username = ?, database_name = ?, service_name = ?, is_enabled = ?
+SET name = ?, db_type = ?, host = ?, port = ?, username = ?, database_name = ?, service_name = ?, is_enabled = ?, can_connect = ?
 WHERE id = ?
-`, req.Label, req.DBType, req.Host, req.Port, req.Username, req.DatabaseName, req.ServiceName, req.IsEnabled, req.ID)
+`, req.Name, req.DBType, req.Host, req.Port, req.Username, req.DatabaseName, req.ServiceName, req.IsEnabled, req.CanConnect, req.ID)
 	} else {
-		_, err = db.Exec(`
+		_, err = tx.Exec(`
 UPDATE platform_db_connection
-SET label = ?, db_type = ?, host = ?, port = ?, username = ?, password_cipher = fixed_aes_encrypt(?), database_name = ?, service_name = ?, is_enabled = ?
+SET name = ?, db_type = ?, host = ?, port = ?, username = ?, password_cipher = fixed_aes_encrypt(?), database_name = ?, service_name = ?, is_enabled = ?, can_connect = ?
 WHERE id = ?
-`, req.Label, req.DBType, req.Host, req.Port, req.Username, req.Password, req.DatabaseName, req.ServiceName, req.IsEnabled, req.ID)
+`, req.Name, req.DBType, req.Host, req.Port, req.Username, req.Password, req.DatabaseName, req.ServiceName, req.IsEnabled, req.CanConnect, req.ID)
 	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":      false,
 			"message": "编辑连接配置失败：" + err.Error(),
+		})
+		return
+	}
+
+	// 如果连接名称变更，级联更新所有引用 connection_name 的关联表
+	if nameChanged {
+		tables := []string{
+			"platform_user_db_connection",
+			"platform_sql_favorite",
+			"platform_sql_audit",
+		}
+		for _, table := range tables {
+			_, err = tx.Exec(fmt.Sprintf(`UPDATE %s SET connection_name = ? WHERE connection_name = ?`, table), req.Name, currentName)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"ok":      false,
+					"message": fmt.Sprintf("更新关联表 %s 失败：%s", table, err.Error()),
+				})
+				return
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"ok":      false,
+			"message": "提交事务失败：" + err.Error(),
 		})
 		return
 	}
@@ -1923,11 +2247,24 @@ func adminTestConnectionHandler(c *gin.Context) {
 
 	if req.Host == "" || req.Port <= 0 || req.Username == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"ok":      false,
-			"message": "主机、端口、用户名不能为空",
+			"ok":        false,
+			"errorType": "port",
+			"message":   "主机、端口、用户名不能为空",
 		})
 		return
 	}
+
+	// 第一步：测试端口连通性（3 秒超时）
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", req.Host, req.Port), 3*time.Second)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"ok":        false,
+			"errorType": "port",
+			"message":   "端口连接失败：" + err.Error() + "（主机/端口无法连通）",
+		})
+		return
+	}
+	_ = conn.Close()
 
 	password := req.Password
 	if password == "" && req.ID > 0 {
@@ -1983,15 +2320,17 @@ func adminTestConnectionHandler(c *gin.Context) {
 	err = testDB.Ping()
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
-			"ok":      false,
-			"message": "连接失败：" + err.Error(),
+			"ok":        false,
+			"errorType": "auth",
+			"message":   "连接失败：" + err.Error(),
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"ok":      true,
-		"message": "连接测试成功",
+		"ok":        true,
+		"errorType": "",
+		"message":   "连接测试成功",
 	})
 }
 
@@ -2261,6 +2600,7 @@ func createDBChangeRequestHandler(c *gin.Context) {
 		DbName:            req.DbName,
 		DbSchema:          req.DbSchema,
 		ChangeContent:     req.ChangeContent,
+		BackupTable:       req.BackupTable,
 	})
 
 	if err != nil {
@@ -2315,6 +2655,7 @@ func updateDBChangeRequestHandler(c *gin.Context) {
 		DbName:            req.DbName,
 		DbSchema:          req.DbSchema,
 		ChangeContent:     req.ChangeContent,
+		BackupTable:       req.BackupTable,
 	}, roleName)
 
 	if err != nil {
@@ -2358,6 +2699,39 @@ func deleteDBChangeRequestHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "申请删除成功"})
 }
 
+func verifyDBChangeRequestHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	applicant := "admin"
+	if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+		applicant = displayName.(string)
+	} else if username, ok := c.Get("currentUsername"); ok && username.(string) != "" {
+		applicant = username.(string)
+	}
+
+	roleName := "user"
+	if r, ok := c.Get("currentRole"); ok {
+		roleName = r.(string)
+	}
+
+	var req DBChangeRequestVerifyReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	if err := appsql.VerifyDBChangeRequest(req.ID, applicant, roleName); err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "验证失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "验证成功，该变更申请已完结"})
+}
+
 func adminReleaseDBChangeRequestHandler(c *gin.Context) {
 	_, _, ok := getCurrentUserContext(c)
 	if !ok {
@@ -2371,7 +2745,7 @@ func adminReleaseDBChangeRequestHandler(c *gin.Context) {
 		return
 	}
 
-	err := appsql.UpdateDBChangeRequestRelease(req.ID, req.TestPublisher, req.ProdPublisher, req.ReleaseVerifier)
+	err := appsql.UpdateDBChangeRequestRelease(req.ID, req.TestPublisher, req.ProdPublisher)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "更新失败: " + err.Error()})
 		return
@@ -2753,4 +3127,527 @@ func adminUpdateDBDataSyncRequestDbaHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "执行DBA信息更新成功"})
+}
+
+// ----------------------------------------------------------------------
+// 数据库告警处理接口
+// ----------------------------------------------------------------------
+
+func listDBAlertHandlesHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+
+	// 普通用户只能看到 handler 为自己的记录，admin 看全部
+	handler := ""
+	roleName := "user"
+	if r, ok := c.Get("currentRole"); ok {
+		roleName = r.(string)
+	}
+	if roleName != "admin" {
+		if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+			handler = displayName.(string)
+		} else if username, ok := c.Get("currentUsername"); ok && username.(string) != "" {
+			handler = username.(string)
+		}
+	}
+
+	dbType := c.Query("dbType")
+	alertLevel := c.Query("alertLevel")
+	alertCategory := c.Query("alertCategory")
+
+	total, records, err := appsql.QueryDBAlertHandles(page, pageSize, handler, dbType, alertLevel, alertCategory)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": err.Error(), "total": 0, "records": []any{}})
+		return
+	}
+
+	if records == nil {
+		records = []appsql.DBAlertHandleRecord{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"ok":      true,
+		"message": "获取成功",
+		"total":   total,
+		"records": records,
+	})
+}
+
+func createDBAlertHandleHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	// 处理人默认为当前创建人
+	handler := "admin"
+	if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+		handler = displayName.(string)
+	} else if username, ok := c.Get("currentUsername"); ok && username.(string) != "" {
+		handler = username.(string)
+	}
+
+	var req DBAlertHandleCreateReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	err := appsql.CreateDBAlertHandle(appsql.DBAlertHandleRecord{
+		DBType:          req.DBType,
+		AlertLevel:      req.AlertLevel,
+		AlertCategory:   req.AlertCategory,
+		AlertContent:    req.AlertContent,
+		ImpactScope:     req.ImpactScope,
+		AlertTime:       req.AlertTime,
+		Handler:         handler,
+		HandleStartTime: req.HandleStartTime,
+		HandleEndTime:   req.HandleEndTime,
+		HandleResult:    req.HandleResult,
+	})
+
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "创建失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "告警处理记录创建成功"})
+}
+
+func updateDBAlertHandleHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	roleName := "user"
+	if r, ok := c.Get("currentRole"); ok {
+		roleName = r.(string)
+	}
+
+	// 用于归属校验（非 admin 只能改自己的记录）
+	handler := "admin"
+	if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+		handler = displayName.(string)
+	} else if username, ok := c.Get("currentUsername"); ok && username.(string) != "" {
+		handler = username.(string)
+	}
+
+	var req DBAlertHandleUpdateReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	err := appsql.UpdateDBAlertHandle(appsql.DBAlertHandleRecord{
+		ID:              req.ID,
+		DBType:          req.DBType,
+		AlertLevel:      req.AlertLevel,
+		AlertCategory:   req.AlertCategory,
+		AlertContent:    req.AlertContent,
+		ImpactScope:     req.ImpactScope,
+		AlertTime:       req.AlertTime,
+		Handler:         handler,
+		HandleStartTime: req.HandleStartTime,
+		HandleEndTime:   req.HandleEndTime,
+		HandleResult:    req.HandleResult,
+	}, roleName)
+
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "更新失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "告警处理记录更新成功"})
+}
+
+func deleteDBAlertHandleHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	handler := "admin"
+	if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+		handler = displayName.(string)
+	} else if username, ok := c.Get("currentUsername"); ok && username.(string) != "" {
+		handler = username.(string)
+	}
+
+	roleName := "user"
+	if r, ok := c.Get("currentRole"); ok {
+		roleName = r.(string)
+	}
+
+	var req DBAlertHandleDeleteReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	if err := appsql.DeleteDBAlertHandle(req.ID, handler, roleName); err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "删除失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "告警处理记录删除成功"})
+}
+
+func adminListDBAlertHandlesHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+
+	handler := c.Query("handler")
+	dbType := c.Query("dbType")
+	alertLevel := c.Query("alertLevel")
+	alertCategory := c.Query("alertCategory")
+
+	total, records, err := appsql.QueryDBAlertHandles(page, pageSize, handler, dbType, alertLevel, alertCategory)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": err.Error(), "total": 0, "records": []any{}})
+		return
+	}
+
+	if records == nil {
+		records = []appsql.DBAlertHandleRecord{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"ok":      true,
+		"message": "获取成功",
+		"total":   total,
+		"records": records,
+	})
+}
+
+func adminUpdateDBAlertHandleResultHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	var req DBAlertHandleResultReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	if err := appsql.UpdateDBAlertHandleResult(req.ID, req.Handler, req.HandleStartTime, req.HandleEndTime, req.HandleResult); err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "更新失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "告警处理结果更新成功"})
+}
+
+// ----------------------------------------------------------------------
+// 运维变更记录接口
+// ----------------------------------------------------------------------
+
+func listOpsChangeRecordsHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+
+	operator := ""
+	roleName := "user"
+	if r, ok := c.Get("currentRole"); ok {
+		roleName = r.(string)
+	}
+	if roleName != "admin" {
+		if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+			operator = displayName.(string)
+		} else if username, ok := c.Get("currentUsername"); ok && username.(string) != "" {
+			operator = username.(string)
+		}
+	}
+
+	changeType := c.Query("changeType")
+	changeLevel := c.Query("changeLevel")
+
+	total, records, err := appsql.QueryOpsChangeRecords(page, pageSize, operator, changeType, changeLevel)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": err.Error(), "total": 0, "records": []any{}})
+		return
+	}
+
+	if records == nil {
+		records = []appsql.OpsChangeRecord{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"ok":      true,
+		"message": "获取成功",
+		"total":   total,
+		"records": records,
+	})
+}
+
+func createOpsChangeRecordHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	operator := "admin"
+	if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+		operator = displayName.(string)
+	} else if username, ok := c.Get("currentUsername"); ok && username.(string) != "" {
+		operator = username.(string)
+	}
+
+	var req OpsChangeCreateReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	err := appsql.CreateOpsChangeRecord(appsql.OpsChangeRecord{
+		ChangeTitle:   req.ChangeTitle,
+		ChangeType:    req.ChangeType,
+		ChangeLevel:   req.ChangeLevel,
+		ChangeContent: req.ChangeContent,
+		ImpactScope:   req.ImpactScope,
+		ChangeIPList:  req.ChangeIPList,
+		ChangeTime:    req.ChangeTime,
+		Operator:      operator,
+		RollbackPlan:  req.RollbackPlan,
+		Remark:        req.Remark,
+	})
+
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "创建失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "运维变更记录创建成功"})
+}
+
+func updateOpsChangeRecordHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	operator := "admin"
+	if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+		operator = displayName.(string)
+	} else if username, ok := c.Get("currentUsername"); ok && username.(string) != "" {
+		operator = username.(string)
+	}
+
+	roleName := "user"
+	if r, ok := c.Get("currentRole"); ok {
+		roleName = r.(string)
+	}
+
+	var req OpsChangeUpdateReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	err := appsql.UpdateOpsChangeRecord(appsql.OpsChangeRecord{
+		ID:            req.ID,
+		ChangeTitle:   req.ChangeTitle,
+		ChangeType:    req.ChangeType,
+		ChangeLevel:   req.ChangeLevel,
+		ChangeContent: req.ChangeContent,
+		ImpactScope:   req.ImpactScope,
+		ChangeIPList:  req.ChangeIPList,
+		ChangeTime:    req.ChangeTime,
+		Operator:      operator,
+		RollbackPlan:  req.RollbackPlan,
+		Remark:        req.Remark,
+	}, roleName)
+
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "更新失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "运维变更记录更新成功"})
+}
+
+func deleteOpsChangeRecordHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	operator := "admin"
+	if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+		operator = displayName.(string)
+	} else if username, ok := c.Get("currentUsername"); ok && username.(string) != "" {
+		operator = username.(string)
+	}
+
+	roleName := "user"
+	if r, ok := c.Get("currentRole"); ok {
+		roleName = r.(string)
+	}
+
+	var req OpsChangeDeleteReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	if err := appsql.DeleteOpsChangeRecord(req.ID, operator, roleName); err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "删除失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "运维变更记录删除成功"})
+}
+
+func adminListOpsChangeRecordsHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+
+	operator := c.Query("operator")
+	changeType := c.Query("changeType")
+	changeLevel := c.Query("changeLevel")
+
+	total, records, err := appsql.QueryOpsChangeRecords(page, pageSize, operator, changeType, changeLevel)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": err.Error(), "total": 0, "records": []any{}})
+		return
+	}
+
+	if records == nil {
+		records = []appsql.OpsChangeRecord{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"ok":      true,
+		"message": "获取成功",
+		"total":   total,
+		"records": records,
+	})
+}
+
+func adminUpdateOpsChangeReviewerHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	// 复核人自动取当前登录用户
+	reviewer := "admin"
+	if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+		reviewer = displayName.(string)
+	} else if username, ok := c.Get("currentUsername"); ok && username.(string) != "" {
+		reviewer = username.(string)
+	}
+
+	var req OpsChangeReviewerReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	if err := appsql.UpdateOpsChangeRecordReviewer(req.ID, reviewer); err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "更新失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "复核成功"})
+}
+
+func adminUpdateOpsChangeResultHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	var req OpsChangeResultReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	if err := appsql.UpdateOpsChangeRecordResult(req.ID, req.ChangeResult); err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "确认失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "变更结果确认成功"})
+}
+
+func adminUpdateOpsChangeRollbackHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	var req OpsChangeRollbackReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "请求格式错误：" + err.Error()})
+		return
+	}
+
+	if err := appsql.UpdateOpsChangeRecordRollback(req.ID, req.RollbackStatus); err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "确认失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "回滚状态确认成功"})
 }

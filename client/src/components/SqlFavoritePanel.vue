@@ -24,7 +24,6 @@ type DBType = 'mysql' | 'oracle'
 
 interface QueryConnectionInfo {
   name: string
-  label: string
   dbType: string
   host: string
   port: number
@@ -47,6 +46,7 @@ interface SQLFavoriteItem {
 
 const props = defineProps<{
   visible: boolean
+  mode: 'add' | 'view'
   currentDbType: DBType
   currentConnectionName: string
   currentSqlText: string
@@ -359,7 +359,8 @@ onMounted(() => {
 
       <p class="result">{{ message }}</p>
 
-      <div class="filter-card">
+      <!-- 搜索筛选框（仅 view 模式显示） -->
+      <div v-if="props.mode === 'view'" class="filter-card">
         <div class="filter-grid">
           <div class="form-item">
             <label>数据库类型</label>
@@ -388,7 +389,8 @@ onMounted(() => {
         </div>
       </div>
 
-      <div class="edit-card">
+      <!-- 新增收藏表单（仅 add 模式显示） -->
+      <div v-if="props.mode === 'add'" class="edit-card">
         <h3>{{ isEditMode ? '编辑收藏' : '新增收藏' }}</h3>
 
         <div class="form-grid">
@@ -410,7 +412,7 @@ onMounted(() => {
             <select v-model="favoriteForm.connectionName">
               <option value="">不绑定连接</option>
               <option v-for="item in filteredConnections" :key="item.name" :value="item.name">
-                {{ item.label || item.name }}
+                {{ item.name }}
               </option>
             </select>
           </div>
@@ -456,7 +458,8 @@ onMounted(() => {
         </div>
       </div>
 
-      <div class="list-card">
+      <!-- 收藏列表（仅 view 模式显示） -->
+      <div v-if="props.mode === 'view'" class="list-card">
         <h3>收藏列表</h3>
 
         <div v-if="favorites.length === 0" class="empty-tip">
@@ -585,6 +588,7 @@ textarea {
   border: 1px solid #dcdfe6;
   border-radius: 6px;
   font-size: 14px;
+  font-family: Consolas, Monaco, monospace;
   background: #fff;
 }
 

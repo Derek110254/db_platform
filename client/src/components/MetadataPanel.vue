@@ -40,7 +40,7 @@ const emit = defineEmits<{
 }>()
 
 /**
- * 输入框变化
+ * 输入框变化（实时触发过滤，无需按搜索按钮）
  */
 const handleKeywordInput = (event: Event) => {
   const value = (event.target as HTMLInputElement).value
@@ -58,11 +58,7 @@ const handleKeywordInput = (event: Event) => {
         :value="props.keyword"
         placeholder="输入表名或字段名关键字"
         @input="handleKeywordInput"
-        @keyup.enter="emit('search')"
       />
-      <button class="action-btn primary-btn small-btn" @click="emit('search')" type="button">
-        搜索
-      </button>
     </div>
 
     <div class="metadata-split-grid">
@@ -165,6 +161,7 @@ h3 {
 .metadata-search-input {
   width: 100%;
   padding: 10px 12px;
+  font-family: Consolas, Monaco, monospace;
   font-size: 16px;
   border: 1px solid #ccc;
   border-radius: 6px;

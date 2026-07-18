@@ -8,6 +8,7 @@ interface AdminSqlAuditRecord {
   displayName: string
   connectionName: string
   sqlText: string
+  executionPlan: string
   aiSuggestion: string
   aiScore: number
   submitAudit: number
@@ -233,19 +234,23 @@ const getAuditStatusClass = (auditPassed: number) => {
             </div>
             <div class="history-sql-label">SQL 内容：</div>
             <pre class="history-sql-pre">{{ item.sqlText }}</pre>
-            
-            <div class="review-actions" v-if="item.auditPassed === 0">
-              <button class="action-btn success-btn small-btn" @click="doReviewAudit(item.id, 1)">通过</button>
-              <button class="action-btn danger-btn small-btn" @click="doReviewAudit(item.id, -1)">驳回</button>
-            </div>
+
+            <div class="history-sql-label" style="margin-top: 12px;">执行计划：</div>
+            <pre v-if="item.executionPlan" class="history-sql-pre">{{ item.executionPlan }}</pre>
+            <div v-else class="empty-plan-tip">该记录未保存执行计划（可能为历史记录）</div>
           </div>
-          
+
           <div class="history-ai-section">
             <div class="ai-header">
               <span class="ai-icon">🤖</span> AI 审核建议
             </div>
             <div class="ai-content">
               {{ item.aiSuggestion || '无建议' }}
+            </div>
+
+            <div class="review-actions" v-if="item.auditPassed === 0">
+              <button class="action-btn success-btn small-btn" @click="doReviewAudit(item.id, 1)">通过</button>
+              <button class="action-btn danger-btn small-btn" @click="doReviewAudit(item.id, -1)">驳回</button>
             </div>
           </div>
         </div>
@@ -356,6 +361,7 @@ h2 {
   border: 1px solid #dcdfe6;
   border-radius: 4px;
   font-size: 14px;
+  font-family: Consolas, Monaco, monospace;
   outline: none;
 }
 
@@ -368,6 +374,7 @@ h2 {
   border: 1px solid #dcdfe6;
   border-radius: 4px;
   font-size: 14px;
+  font-family: Consolas, Monaco, monospace;
   outline: none;
   background-color: #fff;
   cursor: pointer;
@@ -557,6 +564,15 @@ h2 {
   color: #303133;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.empty-plan-tip {
+  padding: 12px;
+  color: #909399;
+  font-size: 13px;
+  background-color: #f8f9fb;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
 }
 
 .review-actions {

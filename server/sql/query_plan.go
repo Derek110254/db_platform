@@ -24,22 +24,17 @@ query_plan.go
 
 主要功能：
 1. 根据用户权限校验数据库连接访问权。
-2. 支持 MySQL、PostgreSQL 和 Oracle 数据库的执行计划获取（屏蔽写操作）。
+2. 支持 MySQL、PostgreSQL 和 Oracle 数据库的执行计划获取（所有语句均可检测性能）。
 3. 调用通义千问 API 解读执行计划，给出优化建议及 SQL 性能评分。
 4. 记录 SQL 执行审计日志。
 */
 
-// --- Qwen API 相关的结构体定义 ---
+// --- AI API 相关的结构体定义 ---
 
-// QwenRequest 对应通义千问 DashScope 的标准请求格式
+// QwenRequest 对应 OpenAI 兼容的 chat/completions 请求格式
 type QwenRequest struct {
-	Model string `json:"model"`
-	Input struct {
-		Messages []QwenMessage `json:"messages"`
-	} `json:"input"`
-	Parameters struct {
-		ResultFormat string `json:"result_format"`
-	} `json:"parameters"`
+	Model    string        `json:"model"`
+	Messages []QwenMessage `json:"messages"`
 }
 
 type QwenMessage struct {
@@ -47,17 +42,16 @@ type QwenMessage struct {
 	Content string `json:"content"`
 }
 
-// QwenResponse 对应通义千问的响应格式
+// QwenResponse 对应 OpenAI 兼容的 chat/completions 响应格式
 type QwenResponse struct {
-	Output struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	} `json:"output"`
-	RequestID string `json:"request_id"`
-	Message   string `json:"message"` // 错误信息
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	} `json:"choices"`
+	Error struct {
+		Message string `json:"message"`
+	} `json:"error"`
 }
 
 type SqlAuditRecord struct {
@@ -107,10 +101,23 @@ func ExplainQueryByConnectionWithContext(
 		return failPlanResponse(err.Error(), start)
 	}
 
-	// 3. 校验 SQL 只允许查询语句 (防止注入或越权执行写操作)
+	// 3. 校验 SQL：非空、单语句、仅允许 DML/DQL（增删改查）
 	rawSQL := strings.TrimSpace(sqlText)
-	if err := validateQuerySQL(rawSQL); err != nil {
-		return failPlanResponse(err.Error(), start)
+	if rawSQL == "" {
+		return failPlanResponse("SQL 不能为空", start)
+	}
+	rawSQL = strings.TrimSuffix(rawSQL, ";")
+	if strings.Contains(rawSQL, ";") {
+		return failPlanResponse("不允许执行多条 SQL 语句", start)
+	}
+	// 仅允许 DQL（SELECT/WITH）和 DML（INSERT/UPDATE/DELETE），不允许 DDL
+	lower := strings.ToLower(strings.TrimSpace(rawSQL))
+	if !(strings.HasPrefix(lower, "select") ||
+		strings.HasPrefix(lower, "with") ||
+		strings.HasPrefix(lower, "insert") ||
+		strings.HasPrefix(lower, "update") ||
+		strings.HasPrefix(lower, "delete")) {
+		return failPlanResponse("仅支持检测 DML/DQL 语句（SELECT、INSERT、UPDATE、DELETE）的性能，不支持 DDL 语句", start)
 	}
 
 	// 4. 打开目标数据库连接
@@ -160,7 +167,8 @@ func ExplainQueryByConnectionWithContext(
 		UserID:         userID, // 传入 SessionUser 中的 UserID
 		ConnectionName: connectionName,
 		SqlText:        sqlText,
-		SqlDigest:      digest, // 存储指纹
+		SqlDigest:      digest,
+		ExecutionPlan:  planText,
 		AiSuggestion:   aiInterpretation,
 		AiScore:        score,
 	}
@@ -210,11 +218,12 @@ func callQwenInterpret(sqlText, planText string) (string, int, error) {
 		return "", 0, fmt.Errorf("未配置 DASHSCOPE_API_KEY")
 	}
 
-	apiUrl := "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
+	// apiUrl := "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
+	apiUrl := "https://dd-ai-api.eastmoney.com/v1/chat/completions" // 内部API
 
 	// 构造 Prompt，明确指定专家身份和分析重点
-	prompt := fmt.Sprintf(`你是一位资深的 DBA 专家。请简洁地解读以下 SQL 执行计划。并为该 SQL 的执行计划性能打分（0-100分），
-    格式必须为 "评分：[数字]"。并指出最严重的 1-2 个性能瓶颈并给出改进后的 SQL 建议，字数控制在 300 字以内。
+	prompt := fmt.Sprintf(`你是一位资深的 DBA 专家。请简洁地解读以下 SQL 执行计划。由于目前在测试环境，尽量忽略估计的行数。并为该 SQL 的执行计划性能打分（0-100分），
+    格式必须为 "评分：[数字]"。并指出最严重的 1-2 个性能瓶颈并给出改进后的 SQL 建议，字数控制在 200 字以内。
 	
 	[待分析 SQL]:
 	%s
@@ -222,14 +231,13 @@ func callQwenInterpret(sqlText, planText string) (string, int, error) {
 	[执行计划原文]:
 	%s`, sqlText, planText)
 
-	// 构造请求数据
+	// 构造请求数据（OpenAI 兼容格式）
 	var reqBody QwenRequest
-	reqBody.Model = "qwen-plus" // 使用 max 模型处理复杂逻辑,将原本的 qwen-max 改为 qwen-plus 或 qwen-turbo
-	reqBody.Input.Messages = []QwenMessage{
+	reqBody.Model = "DeepSeek-V4-Flash"
+	reqBody.Messages = []QwenMessage{
 		{Role: "system", Content: "你是一个专业的数据库性能分析助手。"},
 		{Role: "user", Content: prompt},
 	}
-	reqBody.Parameters.ResultFormat = "message"
 
 	jsonData, _ := json.Marshal(reqBody)
 
@@ -255,8 +263,17 @@ func callQwenInterpret(sqlText, planText string) (string, int, error) {
 		return "", 0, err
 	}
 
+	// 检查错误响应
+	if qwenResp.Error.Message != "" {
+		return "", 0, fmt.Errorf("API 错误: %s", qwenResp.Error.Message)
+	}
+
+	if len(qwenResp.Choices) == 0 {
+		return "", 0, fmt.Errorf("API 返回结果为空")
+	}
+
 	// 在获取到 AI 的 content 后，提取分数
-	content := qwenResp.Output.Choices[0].Message.Content
+	content := qwenResp.Choices[0].Message.Content
 	score := 0
 
 	// 使用正则匹配“评分：85”或“评分: 85”
@@ -321,6 +338,98 @@ func fetchPlanResult(ctx context.Context, db *sql.DB, query string, start time.T
 		Columns:   columns,
 		Rows:      resultRows,
 		RowCount:  len(resultRows),
+		ElapsedMs: time.Since(start).Milliseconds(),
+	}
+}
+
+// ManualExplainQuery
+// ------------------------------------------------------------
+// 手动提交 SQL 执行计划进行 AI 性能检测。
+//
+// 用于数据库不可自动连接（can_connect=0）的场景：
+// 用户在自己的数据库客户端手动执行 EXPLAIN，将输出粘贴提交。
+//
+// 流程：
+// 1. 校验当前用户是否具有目标连接的访问权限。
+// 2. 校验 SQL 仅允许 DML/DQL 语句。
+// 3. 调用 AI（通义千问）解读用户手动提交的执行计划。
+// 4. 保存审核记录（含手动提交的执行计划文本）。
+func ManualExplainQuery(
+	userID int64,
+	roleName string,
+	connectionName string,
+	sqlText string,
+	executionPlan string,
+) QueryExecuteResponse {
+	start := time.Now()
+
+	// 1. 权限校验
+	canAccess, err := auth.UserCanAccessConnection(userID, roleName, connectionName)
+	if err != nil {
+		return failPlanResponse(err.Error(), start)
+	}
+	if !canAccess {
+		return failPlanResponse("当前用户无权访问该数据库连接", start)
+	}
+
+	// 2. 校验 SQL：非空、单语句、仅允许 DML/DQL
+	rawSQL := strings.TrimSpace(sqlText)
+	if rawSQL == "" {
+		return failPlanResponse("SQL 不能为空", start)
+	}
+	rawSQL = strings.TrimSuffix(rawSQL, ";")
+	if strings.Contains(rawSQL, ";") {
+		return failPlanResponse("不允许执行多条 SQL 语句", start)
+	}
+	lower := strings.ToLower(strings.TrimSpace(rawSQL))
+	if !(strings.HasPrefix(lower, "select") ||
+		strings.HasPrefix(lower, "with") ||
+		strings.HasPrefix(lower, "insert") ||
+		strings.HasPrefix(lower, "update") ||
+		strings.HasPrefix(lower, "delete")) {
+		return failPlanResponse("仅支持检测 DML/DQL 语句（SELECT、INSERT、UPDATE、DELETE）的性能，不支持 DDL 语句", start)
+	}
+
+	// 校验执行计划非空
+	planText := strings.TrimSpace(executionPlan)
+	if planText == "" {
+		return failPlanResponse("执行计划不能为空，请粘贴 EXPLAIN 的输出", start)
+	}
+
+	// 3. 调用 AI 解读
+	aiInterpretation, score, err := callQwenInterpret(rawSQL, planText)
+	if err != nil {
+		return failPlanResponse("AI 解读失败: "+err.Error(), start)
+	}
+
+	// 4. 保存审核记录
+	digest := auth.GenerateSQLDigest(sqlText)
+	auditRecord := auth.SqlAuditRecord{
+		UserID:         userID,
+		ConnectionName: connectionName,
+		SqlText:        sqlText,
+		SqlDigest:      digest,
+		ExecutionPlan:  planText,
+		AiSuggestion:   aiInterpretation,
+		AiScore:        score,
+	}
+
+	var auditID int64
+	if id, err := auth.SaveSqlAuditRecord(auditRecord); err != nil {
+		log.Printf("[AuditError] Failed to save manual record for user %d: %v", userID, err)
+	} else {
+		auditID = id
+	}
+
+	// 5. 封装响应
+	return QueryExecuteResponse{
+		OK:        true,
+		Message:   aiInterpretation,
+		Score:     score,
+		AuditID:   auditID,
+		Columns:   []string{},
+		Rows:      []map[string]interface{}{},
+		RowCount:  0,
 		ElapsedMs: time.Since(start).Milliseconds(),
 	}
 }

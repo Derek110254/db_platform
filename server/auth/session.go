@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"regexp"
@@ -63,7 +64,6 @@ type SessionUser struct {
 type DBConnectionRecord struct {
 	ID             int64  `json:"id"`
 	Name           string `json:"name"`
-	Label          string `json:"label"`
 	DBType         string `json:"dbType"`
 	Host           string `json:"host"`
 	Port           int    `json:"port"`
@@ -72,6 +72,7 @@ type DBConnectionRecord struct {
 	DatabaseName   string `json:"databaseName"`
 	ServiceName    string `json:"serviceName"`
 	IsEnabled      int    `json:"isEnabled"`
+	CanConnect     int    `json:"canConnect"`
 }
 
 // getAuthDB
@@ -91,6 +92,11 @@ func getAuthDB() (*sql.DB, error) {
 // 3. platform_db_connection          数据库连接配置表
 // 4. platform_user_db_connection     用户可访问数据库连接关系表
 // 5. platform_sql_favorite           SQL 收藏表
+// 6. platform_sql_audit              SQL AI 审核记录表
+// 7. platform_db_change_request      数据库变更申请表
+// 8. platform_team_db_env            团队数据库环境配置表
+// 9. platform_db_data_sync_request   数据库数据同步申请表
+// 10. platform_db_alert_handle       数据库告警处理表
 func EnsureSchema() error {
 	db, err := getAuthDB()
 	if err != nil {
@@ -136,7 +142,6 @@ CREATE TABLE IF NOT EXISTS platform_session (
 CREATE TABLE IF NOT EXISTS platform_db_connection (
     id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     name VARCHAR(64) NOT NULL DEFAULT '' COMMENT '连接唯一名称，例如 mysql-dev',
-    label VARCHAR(128) NOT NULL DEFAULT '' COMMENT '前端展示名称',
     db_type VARCHAR(16) NOT NULL DEFAULT '' COMMENT '数据库类型：mysql/oracle',
     host VARCHAR(128) NOT NULL DEFAULT '' COMMENT '数据库主机',
     port INT NOT NULL DEFAULT 0 COMMENT '数据库端口',
@@ -145,12 +150,14 @@ CREATE TABLE IF NOT EXISTS platform_db_connection (
     database_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'MySQL 数据库名',
     service_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Oracle 服务名',
     is_enabled TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用：1启用，0禁用',
+    can_connect TINYINT NOT NULL DEFAULT 0 COMMENT '是否可连接：1可连接，0不可连接',
     create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
     UNIQUE KEY uk_platform_db_connection_name (name),
     KEY idx_platform_db_connection_db_type (db_type),
-    KEY idx_platform_db_connection_is_enabled (is_enabled)
+    KEY idx_platform_db_connection_is_enabled (is_enabled),
+    KEY idx_platform_db_connection_can_connect (can_connect)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='平台数据库连接配置表';
 `
 
@@ -196,6 +203,7 @@ CREATE TABLE IF NOT EXISTS platform_sql_audit (
     connection_name VARCHAR(64) NOT NULL DEFAULT '' COMMENT '数据库连接名称',
     sql_text LONGTEXT NOT NULL COMMENT '提交审核的SQL内容',
 	sql_digest VARCHAR(64) NOT NULL COMMENT 'SQL结构指纹哈希',
+    execution_plan LONGTEXT COMMENT 'SQL执行计划',
     ai_suggestion LONGTEXT COMMENT 'AI审核建议文本',
     ai_score INT DEFAULT 0 COMMENT 'AI审核评分(0-100)',
     submit_audit TINYINT NOT NULL DEFAULT 0 COMMENT '提交审核（默认0未提交，1面向交易，2面向用户，3后台配置，4报表生成，5其他）',
@@ -235,6 +243,7 @@ CREATE TABLE IF NOT EXISTS platform_db_change_request (
     db_name VARCHAR(32) NOT NULL DEFAULT '' COMMENT '数据库名',
     db_schema VARCHAR(128) NOT NULL DEFAULT '' COMMENT '数据库schema',
     change_content LONGTEXT COMMENT '变更内容',
+    backup_table VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '备份表名，方便后续清理备份数据',
     release_verifier VARCHAR(64) NOT NULL DEFAULT '' COMMENT '发布验证人',
     create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -291,6 +300,59 @@ CREATE TABLE IF NOT EXISTS platform_db_data_sync_request (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据库数据同步申请表';
 `
 
+	// 新增：数据库告警处理表
+	createDbAlertHandleTable := `
+CREATE TABLE IF NOT EXISTS platform_db_alert_handle (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    db_type VARCHAR(32) NOT NULL DEFAULT '' COMMENT '数据库类型（oracle mysql redis 其他）',
+    alert_level VARCHAR(16) NOT NULL DEFAULT '一般' COMMENT '告警等级（一般，重要，紧急）',
+    alert_category VARCHAR(32) NOT NULL DEFAULT '' COMMENT '告警分类（SQL性能,空间扩容,配置优化,可用性故障,锁与阻塞,备份恢复,硬件不足）',
+    alert_content LONGTEXT NOT NULL COMMENT '告警内容',
+    impact_scope VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '影响范围',
+    alert_time DATETIME NOT NULL COMMENT '告警时间',
+    handler VARCHAR(64) NOT NULL DEFAULT '' COMMENT '处理人',
+    handle_start_time DATETIME COMMENT '处理开始时间',
+    handle_end_time DATETIME COMMENT '处理结束时间',
+    handle_result VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '处理结果',
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_db_alert_handle_db_type (db_type),
+    KEY idx_db_alert_handle_alert_level (alert_level),
+    KEY idx_db_alert_handle_handler (handler),
+    KEY idx_db_alert_handle_alert_time (alert_time),
+    KEY idx_db_alert_handle_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据库告警处理表';
+`
+
+	// 新增：运维变更记录表
+	createOpsChangeRecordTable := `
+CREATE TABLE IF NOT EXISTS platform_ops_change_record (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    change_title VARCHAR(256) NOT NULL DEFAULT '' COMMENT '变更标题（简述变更内容）',
+    change_type VARCHAR(32) NOT NULL DEFAULT '' COMMENT '变更类型（安装部署,配置变更,服务重启,版本升级,数据修复,性能优化,容量变更,应急变更,其他）',
+    change_level VARCHAR(16) NOT NULL DEFAULT '常规' COMMENT '变更等级（常规,重要,紧急）',
+    change_content LONGTEXT NOT NULL COMMENT '变更内容（详细描述具体操作）',
+    impact_scope VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '影响范围（受影响的系统/服务）',
+    change_ip_list VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '变更IP列表',
+    change_time DATETIME NOT NULL COMMENT '变更执行时间',
+    operator VARCHAR(64) NOT NULL DEFAULT '' COMMENT '操作人',
+    reviewer VARCHAR(64) NOT NULL DEFAULT '' COMMENT '复核人',
+    change_result VARCHAR(16) NOT NULL DEFAULT '待确认' COMMENT '变更结果（待确认,成功,失败,部分成功）',
+    rollback_plan LONGTEXT COMMENT '回滚方案',
+    rollback_status VARCHAR(16) NOT NULL DEFAULT '待确认' COMMENT '回滚状态（待确认,无需回滚,已回滚,已失败）',
+    remark VARCHAR(500) NOT NULL DEFAULT '' COMMENT '备注',
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ops_change_record_operator (operator),
+    KEY idx_ops_change_record_change_type (change_type),
+    KEY idx_ops_change_record_change_level (change_level),
+    KEY idx_ops_change_record_change_time (change_time),
+    KEY idx_ops_change_record_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='运维变更记录表';
+`
+
 	for _, stmt := range []string{
 		createUserTable,
 		createSessionTable,
@@ -301,6 +363,8 @@ CREATE TABLE IF NOT EXISTS platform_db_data_sync_request (
 		createDbChangeRequestTable,
 		createTeamDbEnvTable,
 		createDbDataSyncRequestTable,
+		createDbAlertHandleTable,
+		createOpsChangeRecordTable,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			return err
@@ -504,9 +568,33 @@ LIMIT 1
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return SessionUser{}, "", errors.New("用户不存在")
+			// 用户不存在，自动创建（SSO 首次登录自动注册）
+			log.Printf("[SSO] 用户 %s 不存在，自动创建", username)
+			_, createErr := db.Exec(`
+INSERT INTO platform_user (username, password_cipher, display_name, role_name, is_enabled, can_query_data, can_query_plan, need_change_pwd, is_deleted)
+VALUES (?, '', ?, 'user', 1, 1, 1, 0, 0)
+`, username, username)
+			if createErr != nil {
+				return SessionUser{}, "", fmt.Errorf("自动创建用户失败：%v", createErr)
+			}
+
+			// 重新查询刚创建的用户
+			err = db.QueryRow(query, username).Scan(
+				&user.UserID,
+				&user.Username,
+				&user.DisplayName,
+				&user.RoleName,
+				&isEnabled,
+				&user.CanQueryData,
+				&user.CanQueryPlan,
+				&user.NeedChangePwd,
+			)
+			if err != nil {
+				return SessionUser{}, "", fmt.Errorf("创建用户后查询失败：%v", err)
+			}
+		} else {
+			return SessionUser{}, "", err
 		}
-		return SessionUser{}, "", err
 	}
 
 	if isEnabled != 1 {
@@ -619,7 +707,7 @@ func LoadEnabledConnections() ([]DBConnectionRecord, error) {
 	}
 
 	query := `
-SELECT id, name, label, db_type, host, port, username, password_cipher, database_name, service_name, is_enabled
+SELECT id, name, db_type, host, port, username, password_cipher, database_name, service_name, is_enabled, can_connect
 FROM platform_db_connection
 WHERE is_enabled = 1
 ORDER BY db_type, name
@@ -637,7 +725,6 @@ ORDER BY db_type, name
 		if err := rows.Scan(
 			&item.ID,
 			&item.Name,
-			&item.Label,
 			&item.DBType,
 			&item.Host,
 			&item.Port,
@@ -646,6 +733,7 @@ ORDER BY db_type, name
 			&item.DatabaseName,
 			&item.ServiceName,
 			&item.IsEnabled,
+			&item.CanConnect,
 		); err != nil {
 			return nil, err
 		}
@@ -677,7 +765,7 @@ func LoadEnabledConnectionsForUser(userID int64, roleName string) ([]DBConnectio
 	}
 
 	query := `
-SELECT c.id, c.name, c.label, c.db_type, c.host, c.port, c.username, c.password_cipher, c.database_name, c.service_name, c.is_enabled
+SELECT c.id, c.name, c.db_type, c.host, c.port, c.username, c.password_cipher, c.database_name, c.service_name, c.is_enabled
 FROM platform_db_connection c
 INNER JOIN platform_user_db_connection uc
         ON c.name = uc.connection_name
@@ -698,7 +786,6 @@ ORDER BY c.db_type, c.name
 		if err := rows.Scan(
 			&item.ID,
 			&item.Name,
-			&item.Label,
 			&item.DBType,
 			&item.Host,
 			&item.Port,
@@ -707,6 +794,7 @@ ORDER BY c.db_type, c.name
 			&item.DatabaseName,
 			&item.ServiceName,
 			&item.IsEnabled,
+			&item.CanConnect,
 		); err != nil {
 			return nil, err
 		}
@@ -735,7 +823,7 @@ func LoadConnectionByName(name string) (DBConnectionRecord, error) {
 	}
 
 	query := `
-SELECT id, name, label, db_type, host, port, username, password_cipher, database_name, service_name, is_enabled
+SELECT id, name, db_type, host, port, username, password_cipher, database_name, service_name, is_enabled, can_connect
 FROM platform_db_connection
 WHERE name = ? AND is_enabled = 1
 LIMIT 1
@@ -745,7 +833,6 @@ LIMIT 1
 	err = db.QueryRow(query, name).Scan(
 		&item.ID,
 		&item.Name,
-		&item.Label,
 		&item.DBType,
 		&item.Host,
 		&item.Port,
@@ -754,6 +841,7 @@ LIMIT 1
 		&item.DatabaseName,
 		&item.ServiceName,
 		&item.IsEnabled,
+		&item.CanConnect,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -998,7 +1086,8 @@ type SqlAuditRecord struct {
 	UserID         int64  `json:"userId"`
 	ConnectionName string `json:"connectionName"`
 	SqlText        string `json:"sqlText"`
-	SqlDigest      string `json:"sqlDigest"` // 新增：指纹字段
+	SqlDigest      string `json:"sqlDigest"`
+	ExecutionPlan  string `json:"executionPlan"`
 	AiSuggestion   string `json:"aiSuggestion"`
 	AiScore        int    `json:"aiScore"`
 	SubmitAudit    int    `json:"submitAudit"`
@@ -1016,14 +1105,15 @@ func SaveSqlAuditRecord(record SqlAuditRecord) (int64, error) {
 	}
 
 	query := `
-INSERT INTO platform_sql_audit (user_id, connection_name, sql_text, sql_digest, ai_suggestion, ai_score, submit_audit, audit_passed, remark)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO platform_sql_audit (user_id, connection_name, sql_text, sql_digest, execution_plan, ai_suggestion, ai_score, submit_audit, audit_passed, remark)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 	res, err := db.Exec(query,
 		record.UserID,
 		record.ConnectionName,
 		record.SqlText,
 		record.SqlDigest,
+		record.ExecutionPlan,
 		record.AiSuggestion,
 		record.AiScore,
 		record.SubmitAudit,
@@ -1040,6 +1130,7 @@ type SqlAuditHistoryRecord struct {
 	ID             int64  `json:"id"`
 	ConnectionName string `json:"connectionName"`
 	SqlText        string `json:"sqlText"`
+	ExecutionPlan  string `json:"executionPlan"`
 	AiSuggestion   string `json:"aiSuggestion"`
 	AiScore        int    `json:"aiScore"`
 	SubmitAudit    int    `json:"submitAudit"`
@@ -1060,7 +1151,7 @@ func GetSqlAuditHistoryByUserID(userID int64, digest string, page int, pageSize 
 
 	countQuery := `SELECT COUNT(*) FROM platform_sql_audit WHERE user_id = ?`
 	query := `
-SELECT id, connection_name, sql_text, ai_suggestion, ai_score, submit_audit, audit_passed, reviewer, remark, create_time
+SELECT id, connection_name, sql_text, execution_plan, ai_suggestion, ai_score, submit_audit, audit_passed, reviewer, remark, create_time
 FROM platform_sql_audit
 WHERE user_id = ?
 `
@@ -1091,8 +1182,12 @@ WHERE user_id = ?
 	var records []SqlAuditHistoryRecord
 	for rows.Next() {
 		var rec SqlAuditHistoryRecord
-		if err := rows.Scan(&rec.ID, &rec.ConnectionName, &rec.SqlText, &rec.AiSuggestion, &rec.AiScore, &rec.SubmitAudit, &rec.AuditPassed, &rec.Reviewer, &rec.Remark, &rec.CreateTime); err != nil {
+		var executionPlan sql.NullString
+		if err := rows.Scan(&rec.ID, &rec.ConnectionName, &rec.SqlText, &executionPlan, &rec.AiSuggestion, &rec.AiScore, &rec.SubmitAudit, &rec.AuditPassed, &rec.Reviewer, &rec.Remark, &rec.CreateTime); err != nil {
 			return 0, nil, err
+		}
+		if executionPlan.Valid {
+			rec.ExecutionPlan = executionPlan.String
 		}
 		records = append(records, rec)
 	}
@@ -1138,6 +1233,7 @@ type AdminSqlAuditRecord struct {
 	DisplayName    string `json:"displayName"`
 	ConnectionName string `json:"connectionName"`
 	SqlText        string `json:"sqlText"`
+	ExecutionPlan  string `json:"executionPlan"`
 	AiSuggestion   string `json:"aiSuggestion"`
 	AiScore        int    `json:"aiScore"`
 	SubmitAudit    int    `json:"submitAudit"`
@@ -1192,8 +1288,8 @@ LEFT JOIN platform_user u ON a.user_id = u.id
 	}
 
 	query := `
-SELECT a.id, a.user_id, u.username, u.display_name, a.connection_name, a.sql_text, 
-       a.ai_suggestion, a.ai_score, a.submit_audit, a.audit_passed, a.reviewer, a.remark, a.create_time
+SELECT a.id, a.user_id, u.username, u.display_name, a.connection_name, a.sql_text,
+       a.execution_plan, a.ai_suggestion, a.ai_score, a.submit_audit, a.audit_passed, a.reviewer, a.remark, a.create_time
 FROM platform_sql_audit a
 LEFT JOIN platform_user u ON a.user_id = u.id
 ` + baseWhere + `
@@ -1211,13 +1307,16 @@ ORDER BY a.create_time DESC LIMIT ? OFFSET ?
 	var records []AdminSqlAuditRecord
 	for rows.Next() {
 		var rec AdminSqlAuditRecord
-		var displayName sql.NullString
+		var displayName, executionPlan sql.NullString
 		if err := rows.Scan(&rec.ID, &rec.UserID, &rec.Username, &displayName, &rec.ConnectionName, &rec.SqlText,
-			&rec.AiSuggestion, &rec.AiScore, &rec.SubmitAudit, &rec.AuditPassed, &rec.Reviewer, &rec.Remark, &rec.CreateTime); err != nil {
+			&executionPlan, &rec.AiSuggestion, &rec.AiScore, &rec.SubmitAudit, &rec.AuditPassed, &rec.Reviewer, &rec.Remark, &rec.CreateTime); err != nil {
 			return 0, nil, err
 		}
 		if displayName.Valid {
 			rec.DisplayName = displayName.String
+		}
+		if executionPlan.Valid {
+			rec.ExecutionPlan = executionPlan.String
 		}
 		records = append(records, rec)
 	}

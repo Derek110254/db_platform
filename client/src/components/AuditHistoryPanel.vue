@@ -5,6 +5,7 @@ interface SqlAuditHistoryRecord {
   id: number
   connectionName: string
   sqlText: string
+  executionPlan: string
   aiSuggestion: string
   aiScore: number
   submitAudit: number
@@ -174,6 +175,9 @@ const getSubmitStatusClass = (submitAudit: number) => {
           <div class="history-body">
             <div class="history-sql-label">SQL 内容：</div>
             <pre class="history-sql-pre">{{ item.sqlText }}</pre>
+
+            <div v-if="item.executionPlan" class="history-sql-label" style="margin-top: 12px;">执行计划：</div>
+            <pre v-if="item.executionPlan" class="history-sql-pre">{{ item.executionPlan }}</pre>
           </div>
           
           <div class="history-ai-section">

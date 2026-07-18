@@ -202,6 +202,7 @@ defineExpose({
 .login-input {
   width: 100%;
   padding: 10px 12px;
+  font-family: Consolas, Monaco, monospace;
   font-size: 16px;
   border: 1px solid #dcdfe6;
   border-radius: 6px;

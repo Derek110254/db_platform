@@ -31,6 +31,7 @@ interface DBChangeRequest {
   dbName: string
   dbSchema: string
   changeContent: string
+  backupTable: string
   createTime: string
   updateTime: string
 }
@@ -52,14 +53,13 @@ const pageSizeOptions = [10, 20, 50, 100]
 
 const dialogVisible = ref(false)
 const dialogLoading = ref(false)
-const dialogTitle = ref('编辑发布验证信息')
+const dialogTitle = ref('编辑发布信息')
 const message = ref('')
 
 const editForm = ref({
   id: 0,
   testPublisher: '',
   prodPublisher: '',
-  releaseVerifier: ''
 })
 
 const currentRequest = ref<DBChangeRequest | null>(null)
@@ -116,7 +116,6 @@ const openEditDialog = (row: DBChangeRequest) => {
     id: row.id,
     testPublisher: row.testPublisher || '',
     prodPublisher: row.prodPublisher || '',
-    releaseVerifier: row.releaseVerifier || ''
   }
   dialogVisible.value = true
   message.value = ''
@@ -190,7 +189,7 @@ const currentUserName = ref('')
 
 const isItemVerified = (item: DBChangeRequest | null) => {
   if (!item) return false
-  return !!(item.testPublisher && item.prodPublisher && item.releaseVerifier)
+  return !!(item.testPublisher && item.prodPublisher)
 }
 
 onMounted(async () => {
@@ -289,7 +288,7 @@ onMounted(async () => {
             <td>{{ item.dbIp }}</td>
             <td>
               <div class="row-actions">
-                <button class="text-btn" @click="openEditDialog(item)" type="button">{{ isItemVerified(item) ? '查看' : '填写验证' }}</button>
+                <button class="text-btn" @click="openEditDialog(item)" type="button">{{ isItemVerified(item) ? '查看' : '填写发布' }}</button>
               </div>
             </td>
           </tr>
@@ -370,6 +369,10 @@ onMounted(async () => {
                 <pre>{{ currentRequest.changeContent }}</pre>
               </div>
             </div>
+            <div class="detail-row full-width" v-if="currentRequest.backupTable">
+              <span class="detail-label">备份表：</span>
+              <span class="detail-value">{{ currentRequest.backupTable }}</span>
+            </div>
           </div>
           
           <hr class="divider" />
@@ -378,22 +381,15 @@ onMounted(async () => {
             <div class="form-item">
               <label>测试线发布人</label>
               <div class="action-input-group">
-                <input v-model="editForm.testPublisher" type="text" readonly placeholder="待填写" />
-                <button v-if="!isItemVerified(currentRequest) && !editForm.testPublisher" class="action-btn" @click="editForm.testPublisher = currentUserName" type="button">由我发布</button>
+                <input v-model="editForm.testPublisher" type="text" readonly placeholder="待发布" />
+                <button v-if="!isItemVerified(currentRequest) && !editForm.testPublisher" class="action-btn" @click="editForm.testPublisher = currentUserName" type="button">发布完成</button>
               </div>
             </div>
             <div class="form-item">
               <label>生产线发布人</label>
               <div class="action-input-group">
-                <input v-model="editForm.prodPublisher" type="text" readonly placeholder="待填写" />
-                <button v-if="!isItemVerified(currentRequest) && !editForm.prodPublisher" class="action-btn" @click="editForm.prodPublisher = currentUserName" type="button">由我发布</button>
-              </div>
-            </div>
-            <div class="form-item full-width">
-              <label>发布验证确认人</label>
-              <div class="action-input-group">
-                <input v-model="editForm.releaseVerifier" type="text" readonly placeholder="待填写" />
-                <button v-if="!isItemVerified(currentRequest) && !editForm.releaseVerifier" class="action-btn" @click="editForm.releaseVerifier = currentUserName" type="button">由我验证</button>
+                <input v-model="editForm.prodPublisher" type="text" readonly placeholder="待发布" />
+                <button v-if="!isItemVerified(currentRequest) && !editForm.prodPublisher" class="action-btn" @click="editForm.prodPublisher = currentUserName" type="button">发布完成</button>
               </div>
             </div>
           </div>
@@ -451,6 +447,7 @@ onMounted(async () => {
   border: 1px solid #dcdfe6;
   border-radius: 4px;
   font-size: 14px;
+  font-family: Consolas, Monaco, monospace;
 }
 .search-actions {
   display: flex;
@@ -604,6 +601,7 @@ onMounted(async () => {
   border: 1px solid #dcdfe6;
   border-radius: 4px;
   font-size: 14px;
+  font-family: Consolas, Monaco, monospace;
   width: 100%;
 }
 .dialog-footer {

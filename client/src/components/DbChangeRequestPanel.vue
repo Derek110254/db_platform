@@ -32,6 +32,7 @@ interface DBChangeRequest {
   dbName: string
   dbSchema: string
   changeContent: string
+  backupTable: string
   createTime: string
   updateTime: string
 }
@@ -141,17 +142,28 @@ const defaultForm = {
   dbName: '',
   dbSchema: '',
   changeContent: '',
+  backupTable: '',
 }
 
 const editForm = ref({ ...defaultForm })
+
+/**
+ * 变更类型是否包含「数据修改」
+ * 包含时备份表为必填项
+ */
+const isDataChange = computed(() => editForm.value.changeType.includes('数据修改'))
 
 const totalPages = computed(() => {
   if (totalCount.value === 0) return 1
   return Math.ceil(totalCount.value / pageSize.value)
 })
 
+const isReleased = (item: DBChangeRequest) => {
+  return !!(item.testPublisher && item.prodPublisher)
+}
+
 const isVerified = (item: DBChangeRequest) => {
-  return !!(item.testPublisher && item.prodPublisher && item.releaseVerifier)
+  return isReleased(item) && !!item.releaseVerifier
 }
 
 const loadData = async () => {
@@ -295,6 +307,11 @@ const saveRequest = async () => {
     return
   }
 
+  if (isDataChange.value && !editForm.value.backupTable) {
+    message.value = '变更类型包含「数据修改」时，备份表为必填项'
+    return
+  }
+
   const getArr = (val: any) => {
     if (!val) return []
     if (Array.isArray(val)) return val
@@ -406,6 +423,28 @@ const deleteRequest = async (id: number) => {
   }
 }
 
+const verifyRequest = async (id: number) => {
+  if (!confirm('确认该变更申请的发布结果正常？\n验证后该申请将彻底完结，不可再修改。')) return
+
+  try {
+    const res = await fetch('/api/db-change-requests/verify', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ id }),
+    })
+    const data = await res.json()
+    if (!res.ok || !data.ok) {
+      alert(data.message || '验证失败')
+      return
+    }
+    loadData()
+  } catch (err) {
+    console.error(err)
+    alert('验证失败')
+  }
+}
+
 const goPrevPage = () => {
   if (currentPage.value > 1) {
     currentPage.value--
@@ -507,8 +546,6 @@ onMounted(() => {
       <table class="data-table">
         <thead>
           <tr>
-            <th>ID</th>
-            <th>申请人</th>
             <th>申请团队</th>
             <th>数据库环境</th>
             <th>计划变更时间</th>
@@ -519,6 +556,7 @@ onMounted(() => {
             <th>生产线 IP</th>
             <th>实例/库名</th>
             <th>Schema</th>
+            <th>备份表</th>
             <th>创建时间</th>
             <th>发布状态</th>
             <th>操作</th>
@@ -529,8 +567,6 @@ onMounted(() => {
             <td colspan="14" class="empty-cell">暂无数据</td>
           </tr>
           <tr v-for="item in listData" :key="item.id">
-            <td>{{ item.id }}</td>
-            <td>{{ item.applicant }}</td>
             <td>{{ item.applicantTeam }}</td>
             <td>{{ item.environment }}</td>
             <td>{{ formatDate(item.plannedChangeTime) }}</td>
@@ -545,16 +581,22 @@ onMounted(() => {
             <td>{{ item.dbIp }}</td>
             <td>{{ item.dbName }}</td>
             <td>{{ item.dbSchema }}</td>
+            <td>{{ item.backupTable }}</td>
             <td>{{ formatDate(item.createTime) }}</td>
             <td>
-              <span :class="['tag', isVerified(item) ? 'tag-success' : 'tag-warning']">
-                {{ isVerified(item) ? '已验证' : '待验证' }}
-              </span>
+              <span v-if="!isReleased(item)" class="tag tag-info">待发布</span>
+              <span v-else-if="!isVerified(item)" class="tag tag-warning">去验证</span>
+              <span v-else class="tag tag-success">已验证</span>
             </td>
             <td>
-              <div class="row-actions" v-if="!isVerified(item)">
+              <div class="row-actions" v-if="!isReleased(item)">
                 <button class="text-btn" @click="openEditDialog(item)" type="button">编辑</button>
                 <button class="text-btn danger-text" @click="deleteRequest(item.id)" type="button">删除</button>
+              </div>
+              <div class="row-actions" v-else-if="!isVerified(item)">
+                <button class="text-btn" @click="openViewDialog(item)" type="button">查看</button>
+                <button class="text-btn" @click="openCloneDialog(item)" type="button">克隆</button>
+                <button class="text-btn success-text" @click="verifyRequest(item.id)" type="button">验证</button>
               </div>
               <div class="row-actions" v-else>
                 <button class="text-btn" @click="openViewDialog(item)" type="button">查看</button>
@@ -693,6 +735,10 @@ onMounted(() => {
               </label>
               <textarea v-model="editForm.changeContent" rows="6" class="code-font" placeholder="填入具体的 SQL 或变更脚本..."></textarea>
             </div>
+            <div class="form-item full-width">
+              <label>备份表 <span v-if="isDataChange && !isViewMode" class="required">*</span></label>
+              <textarea v-model="editForm.backupTable" rows="2" :placeholder="isDataChange ? '变更类型包含数据修改，备份表为必填项，多个表名可用逗号分隔...' : '填写备份表名，方便后续清理备份数据，多个表名可用逗号分隔...'"></textarea>
+            </div>
           </div>
           </fieldset>
           <div style="margin-top: 10px; text-align: right;" v-if="isViewMode">
@@ -750,6 +796,7 @@ onMounted(() => {
   border: 1px solid #dcdfe6;
   border-radius: 4px;
   font-size: 14px;
+  font-family: Consolas, Monaco, monospace;
 }
 .search-actions {
   display: flex;
@@ -784,6 +831,9 @@ onMounted(() => {
 }
 .danger-text {
   color: #f56c6c;
+}
+.success-text {
+  color: #67c23a;
 }
 .table-wrap {
   width: 100%;
@@ -916,6 +966,8 @@ onMounted(() => {
 }
 .required {
   color: #f56c6c;
+  font-weight: bold;
+  font-size: 16px;
 }
 .form-item input[type="text"],
 .form-item input[type="datetime-local"],
@@ -925,6 +977,7 @@ onMounted(() => {
   border: 1px solid #dcdfe6;
   border-radius: 4px;
   font-size: 14px;
+  font-family: Consolas, Monaco, monospace;
   width: 100%;
 }
 .checkbox-group {

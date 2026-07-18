@@ -587,6 +587,7 @@ onMounted(() => {
   border: 1px solid #dcdfe6;
   border-radius: 4px;
   font-size: 14px;
+  font-family: Consolas, Monaco, monospace;
 }
 .search-actions {
   display: flex;
@@ -616,14 +617,22 @@ onMounted(() => {
   border: none;
   color: #409eff;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 4px 4px;
   font-size: 13px;
+}
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 .danger-text {
   color: #f56c6c;
 }
 .table-wrap {
   width: 100%;
+  min-height: 520px;
   overflow-x: auto;
   border: 1px solid #ebeef5;
   border-radius: 4px;
@@ -643,6 +652,12 @@ onMounted(() => {
   text-align: left;
   border-bottom: 1px solid #ebeef5;
   font-size: 14px;
+}
+.data-table th:nth-child(7),
+.data-table td:nth-child(7),
+.data-table th:nth-child(8),
+.data-table td:nth-child(8) {
+  word-break: break-all;
 }
 .data-table th {
   background: #f5f7fa;
@@ -762,6 +777,7 @@ onMounted(() => {
   border: 1px solid #dcdfe6;
   border-radius: 4px;
   font-size: 14px;
+  font-family: Consolas, Monaco, monospace;
   width: 100%;
 }
 .checkbox-group, .radio-group {

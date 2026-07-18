@@ -26,12 +26,12 @@ type DBType = 'mysql' | 'oracle'
 
 interface QueryConnectionInfo {
   name: string
-  label: string
   dbType: string
   host: string
   port: number
   database: string
   serviceName: string
+  canConnect: number
 }
 
 interface QueryMetadataTable {
@@ -96,6 +96,10 @@ const emit = defineEmits<{
 }>()
 
 const queryEditorView = ref<SimpleEditorView | null>(null)
+
+const canConnect = computed(() => {
+  return props.selectedConnection?.canConnect !== 0
+})
 
 const metadataTableNameSet = computed(() => {
   return new Set(props.metadataTables.map((item) => item.name.toUpperCase()))
@@ -250,7 +254,7 @@ const formatCurrentSQL = () => {
         <label>连接配置</label>
         <select :value="props.connectionName" @change="handleConnectionChange">
           <option v-for="item in props.connections" :key="item.name" :value="item.name">
-            {{ item.label || item.name }}
+            {{ item.name }}
           </option>
         </select>
       </div>
@@ -265,13 +269,14 @@ const formatCurrentSQL = () => {
       <span v-if="props.dbType === 'oracle'">
         <strong>服务名：</strong>{{ props.selectedConnection.serviceName }}
       </span>
+      <span v-if="!canConnect" class="conn-warning">该数据库不可查询</span>
     </div>
 
     <div class="editor-toolbar">
       <button class="action-btn primary-btn small-btn" @click="formatCurrentSQL" type="button">
         SQL 格式化
       </button>
-      <button class="action-btn secondary-btn small-btn" @click="emit('refresh-metadata')" type="button">
+      <button class="action-btn secondary-btn small-btn" @click="emit('refresh-metadata')" :disabled="!canConnect" type="button">
         刷新表字段提示
       </button>
     </div>
@@ -290,8 +295,8 @@ const formatCurrentSQL = () => {
     </div>
 
     <div class="btn-row query-btn-row">
-      <button class="action-btn primary-btn" @click="emit('execute')" :disabled="props.loading" type="button">
-        {{ props.loading ? '查询中...' : '执行查询' }}
+      <button class="action-btn primary-btn" @click="emit('execute')" :disabled="props.loading || !canConnect" type="button">
+        {{ !canConnect ? '不可查询' : (props.loading ? '查询中...' : '执行查询') }}
       </button>
 
       <button
@@ -411,6 +416,7 @@ h2 {
 select {
   width: 100%;
   padding: 10px 12px;
+  font-family: Consolas, Monaco, monospace;
   font-size: 16px;
   border: 1px solid #ccc;
   border-radius: 6px;
@@ -427,6 +433,11 @@ select {
   border-radius: 8px;
   color: #666;
   flex: 0 0 auto;
+}
+
+.conn-warning {
+  color: #f56c6c;
+  font-weight: bold;
 }
 
 .editor-toolbar {

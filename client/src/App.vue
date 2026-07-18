@@ -50,6 +50,8 @@ import AdminDbChangeReleasePanel from './components/AdminDbChangeReleasePanel.vu
 import AdminTeamDbEnvPanel from './components/AdminTeamDbEnvPanel.vue'
 import DbDataSyncRequestPanel from './components/DbDataSyncRequestPanel.vue'
 import AdminDbDataSyncRequestPanel from './components/AdminDbDataSyncRequestPanel.vue'
+import AdminDbAlertHandlePanel from './components/AdminDbAlertHandlePanel.vue'
+import AdminOpsChangePanel from './components/AdminOpsChangePanel.vue'
 
 /**
  * 数据库类型
@@ -59,7 +61,7 @@ type DBType = 'mysql' | 'oracle'
 /**
  * 页面类型
  */
-type PageType = 'home' | 'query' | 'query-plan' | 'audit-history' | 'admin-users' | 'admin-connections' | 'admin-audits' | 'db-change-requests' | 'db-data-sync-requests' | 'admin-db-change-release' | 'admin-db-data-sync-requests' | 'admin-team-db-envs'
+type PageType = 'home' | 'query' | 'query-plan' | 'audit-history' | 'admin-users' | 'admin-connections' | 'admin-audits' | 'db-change-requests' | 'db-data-sync-requests' | 'admin-db-change-release' | 'admin-db-data-sync-requests' | 'admin-team-db-envs' | 'admin-db-alert-handles' | 'admin-ops-change-records'
 
 /**
  * 当前登录用户信息
@@ -79,12 +81,12 @@ interface CurrentUserInfo {
  */
 interface QueryConnectionInfo {
   name: string
-  label: string
   dbType: string
   host: string
   port: number
   database: string
   serviceName: string
+  canConnect: number
 }
 
 /**
@@ -143,6 +145,8 @@ const resolvePageByPath = (): PageType => {
   if (path === '/admin/audits') return 'admin-audits'
   if (path === '/admin/db-change-release') return 'admin-db-change-release'
   if (path === '/admin/team-db-envs') return 'admin-team-db-envs'
+  if (path === '/admin/db-alert-handles') return 'admin-db-alert-handles'
+  if (path === '/admin/ops-change-records') return 'admin-ops-change-records'
   return 'home'
 }
 
@@ -340,6 +344,31 @@ const currentTableColumns = computed(() => {
   return metadataColumns.value.filter((item) => item.tableName === selectedMetadataTable.value)
 })
 
+/**
+ * 按关键字实时过滤表列表（客户端过滤，与团队数据库环境搜索一致）
+ */
+const filteredMetadataTables = computed(() => {
+  const kw = metadataKeyword.value.trim().toLowerCase()
+  if (!kw) return metadataTables.value
+  return metadataTables.value.filter((item) =>
+    item.name.toLowerCase().includes(kw) || (item.comment && item.comment.toLowerCase().includes(kw))
+  )
+})
+
+/**
+ * 按关键字实时过滤字段列表（同时过滤表名和字段名）
+ */
+const filteredMetadataColumns = computed(() => {
+  const kw = metadataKeyword.value.trim().toLowerCase()
+  const base = selectedMetadataTable.value
+    ? metadataColumns.value.filter((item) => item.tableName === selectedMetadataTable.value)
+    : metadataColumns.value
+  if (!kw) return base
+  return base.filter((item) =>
+    item.columnName.toLowerCase().includes(kw) || (item.tableName && item.tableName.toLowerCase().includes(kw))
+  )
+})
+
 /* ------------------------------------------------------------------ */
 /* 监听器                                                              */
 /* ------------------------------------------------------------------ */
@@ -385,7 +414,13 @@ watch(filteredConnections, (items) => {
  */
 watch(selectedConnectionName, async (connName) => {
   clearMetadata()
+  metadataKeyword.value = ''
   if (currentPage.value === 'query' && connName && isAuthenticated.value) {
+    const conn = queryConnections.value.find(c => c.name === connName)
+    if (conn && conn.canConnect === 0) {
+      queryMessage.value = '该数据库不可查询'
+      return
+    }
     await loadQueryMetadata()
   }
 })
@@ -434,6 +469,8 @@ const getPathByPage = (page: PageType): string => {
   if (page === 'admin-audits') return '/admin/audits'
   if (page === 'admin-db-change-release') return '/admin/db-change-release'
   if (page === 'admin-team-db-envs') return '/admin/team-db-envs'
+  if (page === 'admin-db-alert-handles') return '/admin/db-alert-handles'
+  if (page === 'admin-ops-change-records') return '/admin/ops-change-records'
   return '/'
 }
 
@@ -452,7 +489,7 @@ const navigateTo = async (page: PageType) => {
     }
   }
 
-  if (page === 'admin-users' || page === 'admin-connections' || page === 'admin-audits' || page === 'admin-db-change-release' || page === 'admin-team-db-envs') {
+  if (page === 'admin-users' || page === 'admin-connections' || page === 'admin-audits' || page === 'admin-db-change-release' || page === 'admin-team-db-envs' || page === 'admin-db-alert-handles' || page === 'admin-ops-change-records') {
     const ok = await checkAuthStatus(false)
     if (!ok) {
       loginDialogVisible.value = true
@@ -502,7 +539,7 @@ const handlePopState = async () => {
     }
   }
 
-  if (targetPage === 'admin-users' || targetPage === 'admin-connections' || targetPage === 'admin-audits' || targetPage === 'admin-db-change-release' || targetPage === 'admin-team-db-envs') {
+  if (targetPage === 'admin-users' || targetPage === 'admin-connections' || targetPage === 'admin-audits' || targetPage === 'admin-db-change-release' || targetPage === 'admin-team-db-envs' || targetPage === 'admin-db-alert-handles' || targetPage === 'admin-ops-change-records') {
     const ok = await checkAuthStatus(false)
     if (!ok || !isAdmin.value) {
       currentPage.value = 'home'
@@ -548,7 +585,7 @@ onMounted(async () => {
     }
   }
 
-  if (currentPage.value === 'admin-users' || currentPage.value === 'admin-connections' || currentPage.value === 'admin-audits') {
+  if (currentPage.value === 'admin-users' || currentPage.value === 'admin-connections' || currentPage.value === 'admin-audits' || currentPage.value === 'admin-db-change-release' || currentPage.value === 'admin-team-db-envs') {
     const ok = await checkAuthStatus(false)
     if (!ok || !isAdmin.value) {
       currentPage.value = 'home'
@@ -864,6 +901,12 @@ const loadQueryMetadata = async () => {
     return
   }
 
+  const conn = queryConnections.value.find(c => c.name === selectedConnectionName.value)
+  if (conn && conn.canConnect === 0) {
+    clearMetadata()
+    return
+  }
+
   const currentRequestId = ++metadataRequestId.value
   metadataLoading.value = true
 
@@ -874,7 +917,7 @@ const loadQueryMetadata = async () => {
       credentials: 'include',
       body: JSON.stringify({
         connectionName: selectedConnectionName.value,
-        keyword: metadataKeyword.value,
+        keyword: '',
       }),
     })
 
@@ -984,6 +1027,12 @@ const executeQuery = async () => {
     return
   }
 
+  const conn = queryConnections.value.find(c => c.name === selectedConnectionName.value)
+  if (conn && conn.canConnect === 0) {
+    queryMessage.value = '该数据库不可查询'
+    return
+  }
+
   queryAbortController.value = new AbortController()
   queryLoading.value = true
   queryColumns.value = []
@@ -1040,6 +1089,12 @@ const explainQuery = async () => {
     return
   }
 
+  const conn = queryConnections.value.find(c => c.name === selectedConnectionName.value)
+  if (conn && conn.canConnect === 0) {
+    queryMessage.value = '该数据库不可检测'
+    return
+  }
+
   if (!queryText.value.trim()) {
     queryMessage.value = '请输入需要检测的 SQL 语句'
     return
@@ -1079,6 +1134,71 @@ const explainQuery = async () => {
 
     currentPageNo.value = 1
     addQueryHistory()
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      queryMessage.value = '检测已中止'
+    } else {
+      console.error(err)
+      queryMessage.value = '检测失败，请检查后端是否启动'
+    }
+  } finally {
+    queryLoading.value = false
+    queryAbortController.value = null
+  }
+}
+
+/**
+ * 手动提交执行计划进行性能检测
+ * 用于不可自动连接的数据库
+ */
+const manualExplainQuery = async (payload: { executionPlan: string }) => {
+  if (queryLoading.value) return
+
+  if (!selectedConnectionName.value) {
+    queryMessage.value = '请选择数据库连接'
+    return
+  }
+
+  if (!queryText.value.trim()) {
+    queryMessage.value = '请输入需要检测的 SQL 语句'
+    return
+  }
+
+  if (!payload.executionPlan.trim()) {
+    queryMessage.value = '请粘贴执行计划内容'
+    return
+  }
+
+  queryAbortController.value = new AbortController()
+  queryLoading.value = true
+  queryColumns.value = []
+  queryRows.value = []
+  queryMessage.value = '正在分析执行计划...'
+
+  try {
+    const res = await fetch('/api/query-plan/manual', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        connectionName: selectedConnectionName.value,
+        sql: queryText.value,
+        executionPlan: payload.executionPlan,
+      }),
+      signal: queryAbortController.value.signal,
+    })
+
+    if (res.status === 401) {
+      handleUnauthorized('登录已失效，请重新登录')
+      return
+    }
+
+    const data = await res.json()
+    queryMessage.value = data.message || '检测完成'
+    queryScore.value = data.score || 0
+    queryAuditId.value = data.auditId || 0
+    queryColumns.value = data.columns || []
+    queryRows.value = data.rows || []
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
       queryMessage.value = '检测已中止'
@@ -1186,10 +1306,23 @@ const handleQueryPanelMessage = (message: string) => {
 /* ------------------------------------------------------------------ */
 
 /**
- * 打开 SQL 收藏弹窗
- * “收藏 SQL”和“查看收藏”都会走这里
+ * SQL 收藏弹窗模式：add 新增 / view 查看列表
  */
-const openSQLFavorites = () => {
+const sqlFavoriteMode = ref<'add' | 'view'>('add')
+
+/**
+ * 打开 SQL 收藏弹窗（新增模式）
+ */
+const openSQLFavoritesAdd = () => {
+  sqlFavoriteMode.value = 'add'
+  sqlFavoriteVisible.value = true
+}
+
+/**
+ * 打开 SQL 收藏弹窗（查看列表模式）
+ */
+const openSQLFavoritesView = () => {
+  sqlFavoriteMode.value = 'view'
   sqlFavoriteVisible.value = true
 }
 
@@ -1301,6 +1434,22 @@ const scrollToTop = () => {
                 <button
                   v-if="isAdmin"
                   class="user-dropdown-item"
+                  @click="navigateTo('admin-db-alert-handles')"
+                  type="button"
+                >
+                  数据库告警处理
+                </button>
+                <button
+                  v-if="isAdmin"
+                  class="user-dropdown-item"
+                  @click="navigateTo('admin-ops-change-records')"
+                  type="button"
+                >
+                  运维变更记录
+                </button>
+                <button
+                  v-if="isAdmin"
+                  class="user-dropdown-item"
                   @click="navigateTo('admin-users')"
                   type="button"
                 >
@@ -1385,9 +1534,9 @@ const scrollToTop = () => {
           <MetadataPanel
             :loading="metadataLoading"
             :keyword="metadataKeyword"
-            :tables="metadataTables"
+            :tables="filteredMetadataTables"
             :selected-table-name="selectedMetadataTable"
-            :current-table-columns="currentTableColumns"
+            :current-table-columns="filteredMetadataColumns"
             @update:keyword="metadataKeyword = $event"
             @search="loadQueryMetadata"
             @select-table="selectMetadataTable"
@@ -1413,8 +1562,8 @@ const scrollToTop = () => {
             @export="exportQueryExcel"
             @clear="clearQuery"
             @refresh-metadata="loadQueryMetadata"
-            @open-favorites="openSQLFavorites"
-            @favorite-current-sql="openSQLFavorites"
+            @open-favorites="openSQLFavoritesView"
+            @favorite-current-sql="openSQLFavoritesAdd"
           />
 
           <!-- 右侧查询历史 -->
@@ -1481,9 +1630,9 @@ const scrollToTop = () => {
           <MetadataPanel
             :loading="metadataLoading"
             :keyword="metadataKeyword"
-            :tables="metadataTables"
+            :tables="filteredMetadataTables"
             :selected-table-name="selectedMetadataTable"
-            :current-table-columns="currentTableColumns"
+            :current-table-columns="filteredMetadataColumns"
             @update:keyword="metadataKeyword = $event"
             @search="loadQueryMetadata"
             @select-table="selectMetadataTable"
@@ -1507,8 +1656,9 @@ const scrollToTop = () => {
             :metadata-tables="metadataTables"
             :metadata-columns="metadataColumns"
             @message="handleQueryPanelMessage"
-            @explain="explainQuery"
-            @cancel="cancelQuery"
+  @explain="explainQuery"
+  @manual-explain="manualExplainQuery"
+  @cancel="cancelQuery"
             @refresh-metadata="loadQueryMetadata"
             @open-audit-history="navigateTo('audit-history')"
           />
@@ -1569,6 +1719,16 @@ const scrollToTop = () => {
       <template v-else-if="currentPage === 'admin-team-db-envs'">
         <AdminTeamDbEnvPanel />
       </template>
+
+      <!-- 管理员页面：数据库告警处理 -->
+      <template v-else-if="currentPage === 'admin-db-alert-handles'">
+        <AdminDbAlertHandlePanel />
+      </template>
+
+      <!-- 管理员页面：运维变更记录 -->
+      <template v-else-if="currentPage === 'admin-ops-change-records'">
+        <AdminOpsChangePanel />
+      </template>
     </div>
 
     <!-- 登录弹窗 -->
@@ -1596,6 +1756,7 @@ const scrollToTop = () => {
     <!-- SQL 收藏弹窗 -->
     <SqlFavoritePanel
       :visible="sqlFavoriteVisible"
+      :mode="sqlFavoriteMode"
       :current-db-type="queryDBType"
       :current-connection-name="selectedConnectionName"
       :current-sql-text="queryText"

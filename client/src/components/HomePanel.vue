@@ -507,6 +507,7 @@ const switchMode = (mode: ModeType) => {
 select {
   width: 220px;
   padding: 10px 12px;
+  font-family: Consolas, Monaco, monospace;
   font-size: 16px;
   border: 1px solid #ccc;
   border-radius: 6px;

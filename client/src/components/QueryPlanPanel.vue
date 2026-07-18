@@ -20,12 +20,12 @@ type DBType = 'mysql' | 'oracle'
 
 interface QueryConnectionInfo {
   name: string
-  label: string
   dbType: string
   host: string
   port: number
   database: string
   serviceName: string
+  canConnect: number
 }
 
 interface QueryMetadataTable {
@@ -83,6 +83,7 @@ const emit = defineEmits<{
   (e: 'update:connection-name', value: string): void
   (e: 'update:sql-text', value: string): void
   (e: 'explain'): void
+  (e: 'manual-explain', payload: { executionPlan: string }): void
   (e: 'cancel'): void
   (e: 'refresh-metadata'): void
   (e: 'message', value: string): void
@@ -109,6 +110,10 @@ const handleKeydown = (event: KeyboardEvent) => {
     }
   }
 }
+
+const canConnect = computed(() => {
+  return props.selectedConnection?.canConnect !== 0
+})
 
 const metadataTableNameSet = computed(() => {
   return new Set(props.metadataTables.map((item) => item.name.toUpperCase()))
@@ -264,6 +269,31 @@ const submitAuditForm = ref({
   remark: ''
 })
 
+const manualPlanDialogVisible = ref(false)
+const manualPlanText = ref('')
+
+const openManualPlanDialog = () => {
+  manualPlanText.value = ''
+  manualPlanDialogVisible.value = true
+}
+
+const closeManualPlanDialog = () => {
+  manualPlanDialogVisible.value = false
+}
+
+const submitManualPlan = () => {
+  if (!manualPlanText.value.trim()) {
+    showToast('请粘贴执行计划内容')
+    return
+  }
+  if (!props.sqlText.trim()) {
+    showToast('请先输入需要检测的 SQL 语句')
+    return
+  }
+  emit('manual-explain', { executionPlan: manualPlanText.value })
+  manualPlanDialogVisible.value = false
+}
+
 const toastMessage = ref('')
 const showToast = (msg: string) => {
   toastMessage.value = msg
@@ -327,7 +357,7 @@ const doSubmitAudit = async () => {
       <h2>SQL 执行性能检测</h2>
 
       <div class="module-tip">
-        该页面仅用于获取查询语句的执行计划，评估 SQL 性能，不会真实执行数据查询操作。
+        该页面用于获取 SQL 的执行计划，评估 SQL 性能，不会真实执行数据操作。
       </div>
 
       <div class="query-form-grid">
@@ -343,7 +373,7 @@ const doSubmitAudit = async () => {
           <label>连接配置</label>
           <select :value="props.connectionName" @change="handleConnectionChange">
             <option v-for="item in props.connections" :key="item.name" :value="item.name">
-              {{ item.label || item.name }}
+              {{ item.name }}
             </option>
           </select>
         </div>
@@ -358,13 +388,14 @@ const doSubmitAudit = async () => {
         <span v-if="props.dbType === 'oracle'">
           <strong>服务名：</strong>{{ props.selectedConnection.serviceName }}
         </span>
+        <span v-if="!canConnect" class="conn-warning">该数据库不可检测</span>
       </div>
 
       <div class="editor-toolbar">
         <button class="action-btn primary-btn small-btn" @click="formatCurrentSQL" type="button">
           SQL 格式化
         </button>
-        <button class="action-btn secondary-btn small-btn" @click="emit('refresh-metadata')" type="button">
+        <button class="action-btn secondary-btn small-btn" @click="emit('refresh-metadata')" :disabled="!canConnect" type="button">
           刷新表字段提示
         </button>
       </div>
@@ -375,7 +406,7 @@ const doSubmitAudit = async () => {
             :model-value="props.sqlText"
             :extensions="queryEditorExtensions"
             :style="{ height: '100%' }"
-            placeholder="请输入需要检测的查询语句"
+            placeholder="请输入需要检测的 SQL 语句"
             @update:model-value="handleSqlTextUpdate"
             @ready="handleQueryEditorReady"
           />
@@ -383,8 +414,11 @@ const doSubmitAudit = async () => {
       </div>
 
       <div class="btn-row query-btn-row">
-        <button class="action-btn primary-btn" @click="emit('explain')" :disabled="props.loading" type="button">
+        <button v-if="canConnect" class="action-btn primary-btn" @click="emit('explain')" :disabled="props.loading" type="button">
           {{ props.loading ? '检测中...' : '获取执行计划' }}
+        </button>
+        <button v-else class="action-btn primary-btn" @click="openManualPlanDialog" :disabled="props.loading" type="button">
+          手动提交执行计划
         </button>
 
         <button class="action-btn purple-btn" @click="emit('open-audit-history')" type="button">
@@ -410,7 +444,7 @@ const doSubmitAudit = async () => {
         </button>
       </div>
 
-      <div v-if="props.queryMessage && (!props.queryRows || props.queryRows.length === 0)" class="status-message">
+      <div v-if="props.queryMessage && (!props.queryRows || props.queryRows.length === 0) && (props.queryMessage === '执行成功' || props.queryMessage === '获取执行计划成功' || props.queryMessage === '检测中...' || props.queryMessage === '正在获取执行计划...' || props.queryMessage === '正在分析执行计划...' || props.queryMessage === '检测已中止' || props.queryMessage.startsWith('检测失败') || props.queryMessage.startsWith('该数据库不可'))" class="status-message">
         {{ props.queryMessage }}
       </div>
 
@@ -451,6 +485,46 @@ const doSubmitAudit = async () => {
           <button class="dialog-btn confirm-btn" @click="doSubmitAudit" :disabled="submittingAudit">
             {{ submittingAudit ? '提交中...' : '确认提交' }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 手动提交执行计划弹窗 -->
+    <div v-if="manualPlanDialogVisible" class="dialog-overlay" @click.self="closeManualPlanDialog">
+      <div class="dialog-content large-dialog">
+        <div class="dialog-header">
+          <h3>手动提交执行计划</h3>
+          <button class="close-icon-btn" @click="closeManualPlanDialog" type="button">×</button>
+        </div>
+        <div class="dialog-body">
+          <div class="manual-plan-section">
+            <label class="manual-plan-label">当前 SQL：</label>
+            <pre class="manual-plan-sql">{{ props.sqlText || '（请先在编辑器中输入 SQL）' }}</pre>
+          </div>
+
+          <div class="manual-plan-tip">
+            <div class="manual-plan-tip-title">如何获取执行计划：</div>
+            <div class="manual-plan-tip-item">
+              <strong>MySQL：</strong>在数据库客户端执行 <code>EXPLAIN 你的SQL;</code>，将结果表格内容复制粘贴到下方文本框。
+            </div>
+            <div class="manual-plan-tip-item">
+              <strong>Oracle：</strong>先执行 <code>EXPLAIN PLAN FOR 你的SQL;</code>，再执行 <code>SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY);</code>，将输出内容复制粘贴到下方文本框。
+            </div>
+          </div>
+
+          <div class="manual-plan-section">
+            <label class="manual-plan-label">执行计划（粘贴 EXPLAIN 输出）：</label>
+            <textarea
+              v-model="manualPlanText"
+              rows="12"
+              class="manual-plan-textarea"
+              placeholder="将 EXPLAIN 的输出内容粘贴到此处..."
+            ></textarea>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button class="dialog-btn cancel-btn" @click="closeManualPlanDialog" type="button">取消</button>
+          <button class="dialog-btn confirm-btn" @click="submitManualPlan" type="button">提交检测</button>
         </div>
       </div>
     </div>
@@ -699,6 +773,7 @@ h2 {
 select {
   width: 100%;
   padding: 10px 12px;
+  font-family: Consolas, Monaco, monospace;
   font-size: 16px;
   border: 1px solid #ccc;
   border-radius: 6px;
@@ -714,6 +789,11 @@ select {
   background: #f5f7fa;
   border-radius: 8px;
   color: #666;
+}
+
+.conn-warning {
+  color: #f56c6c;
+  font-weight: bold;
 }
 
 .editor-toolbar {
@@ -925,6 +1005,81 @@ select {
 .confirm-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* 手动提交执行计划弹窗 */
+.manual-plan-section {
+  margin-bottom: 16px;
+}
+
+.manual-plan-label {
+  display: block;
+  font-size: 14px;
+  color: #606266;
+  margin-bottom: 8px;
+  font-weight: bold;
+}
+
+.manual-plan-sql {
+  margin: 0;
+  padding: 12px;
+  background-color: #f8f9fb;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  font-family: Consolas, Monaco, monospace;
+  font-size: 13px;
+  color: #303133;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.manual-plan-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  font-family: Consolas, Monaco, monospace;
+  font-size: 13px;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.manual-plan-textarea:focus {
+  border-color: #409eff;
+  outline: none;
+}
+
+.manual-plan-tip {
+  margin: 16px 0;
+  padding: 14px 16px;
+  background: #ecf5ff;
+  border: 1px solid #d9ecff;
+  border-radius: 6px;
+}
+
+.manual-plan-tip-title {
+  font-size: 14px;
+  font-weight: bold;
+  color: #409eff;
+  margin-bottom: 8px;
+}
+
+.manual-plan-tip-item {
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.8;
+  margin-bottom: 4px;
+}
+
+.manual-plan-tip-item code {
+  padding: 2px 6px;
+  background: #f0f0f0;
+  border-radius: 3px;
+  font-family: Consolas, Monaco, monospace;
+  font-size: 12px;
+  color: #e6a23c;
 }
 
 .center-card :deep(.cm-editor) {

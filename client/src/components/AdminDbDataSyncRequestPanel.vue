@@ -419,6 +419,7 @@ onMounted(async () => {
 }
 .table-wrap {
   width: 100%;
+  min-height: 520px;
   overflow-x: auto;
   border: 1px solid #ebeef5;
   border-radius: 4px;

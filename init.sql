@@ -118,7 +118,6 @@ CREATE TABLE IF NOT EXISTS platform_session (
 CREATE TABLE IF NOT EXISTS platform_db_connection (
     id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     name VARCHAR(64) NOT NULL DEFAULT '' COMMENT '连接唯一名称，例如 mysql-dev',
-    label VARCHAR(128) NOT NULL DEFAULT '' COMMENT '前端展示名称',
     db_type VARCHAR(16) NOT NULL DEFAULT '' COMMENT '数据库类型：mysql/oracle',
     host VARCHAR(128) NOT NULL DEFAULT '' COMMENT '数据库主机',
     port INT NOT NULL DEFAULT 0 COMMENT '数据库端口',
@@ -127,12 +126,14 @@ CREATE TABLE IF NOT EXISTS platform_db_connection (
     database_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'MySQL 数据库名',
     service_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Oracle 服务名',
     is_enabled TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用：1启用，0禁用',
+    can_connect TINYINT NOT NULL DEFAULT 0 COMMENT '是否可连接：1可连接，0不可连接',
     create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
     UNIQUE KEY uk_platform_db_connection_name (name),
     KEY idx_platform_db_connection_db_type (db_type),
-    KEY idx_platform_db_connection_is_enabled (is_enabled)
+    KEY idx_platform_db_connection_is_enabled (is_enabled),
+    KEY idx_platform_db_connection_can_connect (can_connect)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='平台数据库连接配置表';
 
 
@@ -190,6 +191,7 @@ CREATE TABLE IF NOT EXISTS platform_sql_audit (
     connection_name VARCHAR(64) NOT NULL DEFAULT '' COMMENT '数据库连接名称',
     sql_text LONGTEXT NOT NULL COMMENT '提交审核的SQL内容',
 	sql_digest VARCHAR(64) NOT NULL COMMENT 'SQL结构指纹哈希',
+    execution_plan LONGTEXT COMMENT 'SQL执行计划',
     ai_suggestion LONGTEXT COMMENT 'AI审核建议文本',
     ai_score INT DEFAULT 0 COMMENT 'AI审核评分(0-100)',
     submit_audit TINYINT NOT NULL DEFAULT 0 COMMENT '提交审核（默认0未提交，1面向交易，2面向用户，3后台配置，4报表生成，5其他）',
@@ -256,6 +258,7 @@ CREATE TABLE IF NOT EXISTS platform_db_change_request (
     db_name VARCHAR(32) NOT NULL DEFAULT '' COMMENT '生产线数据库名',
     db_schema VARCHAR(128) NOT NULL DEFAULT '' COMMENT '生产线数据库schema',
     change_content LONGTEXT COMMENT '变更内容',
+    backup_table VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '备份表名，方便后续清理备份数据',
     release_verifier VARCHAR(64) NOT NULL DEFAULT '' COMMENT '发布验证人',
     create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -318,3 +321,59 @@ CREATE TABLE IF NOT EXISTS platform_db_data_sync_request (
     KEY idx_db_data_sync_req_applicant (applicant),
     KEY idx_db_data_sync_req_create_time (create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据库数据同步申请表';
+
+-- =========================================================
+-- 13. 创建数据库告警处理表
+-- ---------------------------------------------------------
+-- 对应代码中的 platform_db_alert_handle 表
+-- 记录数据库告警内容及其处理过程与结果
+-- =========================================================
+CREATE TABLE IF NOT EXISTS platform_db_alert_handle (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    db_type VARCHAR(32) NOT NULL DEFAULT '' COMMENT '数据库类型（oracle mysql redis 其他）',
+    alert_level VARCHAR(16) NOT NULL DEFAULT '一般' COMMENT '告警等级（一般，重要，紧急）',
+    alert_category VARCHAR(32) NOT NULL DEFAULT '' COMMENT '告警分类（SQL性能,空间扩容,配置优化,可用性故障,锁与阻塞,备份恢复,硬件不足）',
+    alert_content LONGTEXT NOT NULL COMMENT '告警内容',
+    impact_scope VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '影响范围',
+    alert_time DATETIME NOT NULL COMMENT '告警时间',
+    handler VARCHAR(64) NOT NULL DEFAULT '' COMMENT '处理人',
+    handle_start_time DATETIME COMMENT '处理开始时间',
+    handle_end_time DATETIME COMMENT '处理结束时间',
+    handle_result VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '处理结果',
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_db_alert_handle_db_type (db_type),
+    KEY idx_db_alert_handle_alert_level (alert_level),
+    KEY idx_db_alert_handle_handler (handler),
+    KEY idx_db_alert_handle_alert_time (alert_time),
+    KEY idx_db_alert_handle_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据库告警处理表';
+
+-- =========================================================
+-- 14. 创建运维变更记录表
+-- =========================================================
+CREATE TABLE IF NOT EXISTS platform_ops_change_record (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    change_title VARCHAR(256) NOT NULL DEFAULT '' COMMENT '变更标题（简述变更内容）',
+    change_type VARCHAR(32) NOT NULL DEFAULT '' COMMENT '变更类型（安装部署,配置变更,服务重启,版本升级,数据修复,性能优化,容量变更,应急变更,其他）',
+    change_level VARCHAR(16) NOT NULL DEFAULT '常规' COMMENT '变更等级（常规,重要,紧急）',
+    change_content LONGTEXT NOT NULL COMMENT '变更内容（详细描述具体操作）',
+    impact_scope VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '影响范围（受影响的系统/服务）',
+    change_ip_list VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '变更IP列表',
+    change_time DATETIME NOT NULL COMMENT '变更执行时间',
+    operator VARCHAR(64) NOT NULL DEFAULT '' COMMENT '操作人',
+    reviewer VARCHAR(64) NOT NULL DEFAULT '' COMMENT '复核人',
+    change_result VARCHAR(16) NOT NULL DEFAULT '待确认' COMMENT '变更结果（待确认,成功,失败,部分成功）',
+    rollback_plan LONGTEXT COMMENT '回滚方案',
+    rollback_status VARCHAR(16) NOT NULL DEFAULT '待确认' COMMENT '回滚状态（待确认,无需回滚,已回滚,已失败）',
+    remark VARCHAR(500) NOT NULL DEFAULT '' COMMENT '备注',
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ops_change_record_operator (operator),
+    KEY idx_ops_change_record_change_type (change_type),
+    KEY idx_ops_change_record_change_level (change_level),
+    KEY idx_ops_change_record_change_time (change_time),
+    KEY idx_ops_change_record_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='运维变更记录表';
