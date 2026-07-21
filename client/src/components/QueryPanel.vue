@@ -350,239 +350,48 @@ const formatCurrentSQL = () => {
 </template>
 
 <style scoped>
-.card {
-  width: 100%;
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  padding: 24px;
-  margin-bottom: 24px;
-  background: #fff;
-}
+/* 组件特有样式（公共样式见 global.css） */
 
-.center-card,
-.wide-center-card {
-  /* 改为更灵活的高度 */
-  min-height: 600px;
-  height: auto;
-  display: flex;
-  flex-direction: column;
-  /* 防止超出视口 */
-  max-height: calc(100vh - 150px);
-  overflow: hidden;
-}
+/* 卡片布局 */
+.center-card, .wide-center-card { min-height: 600px; height: auto; display: flex; flex-direction: column; max-height: calc(100vh - 150px); overflow: hidden; }
+.center-card { min-width: 0; width: 100%; overflow: hidden; }
+h2 { flex: 0 0 auto; }
+.module-tip { flex: 0 0 auto; }
 
-.center-card {
-  min-width: 0;
-  width: 100%;
-  overflow: hidden;
-}
+/* 查询表单 */
+.query-form-grid { flex: 0 0 auto; }
 
-h2 {
-  margin-top: 0;
-  color: #2c3e50;
-  flex: 0 0 auto;
-}
+/* 连接信息 */
+.conn-tip { flex: 0 0 auto; }
+.conn-warning { color: #f56c6c; font-weight: bold; }
 
-.module-tip {
-  margin-bottom: 12px;
-  padding: 12px 14px;
-  line-height: 1.8;
-  background: #f5f7fa;
-  border-radius: 8px;
-  color: #666;
-  flex: 0 0 auto;
-}
+/* 编辑器 */
+.editor-toolbar { flex: 0 0 auto; }
+.query-editor-outer { flex: 1 1 auto; overflow: hidden; }
+.query-editor-wrap { height: 100%; min-height: 200px; max-height: 100%; overflow: hidden; flex: 1 1 auto; }
+.query-panel-bottom-space { display: none; }
 
-.query-form-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
-  margin-bottom: 12px;
-  width: 100%;
-  flex: 0 0 auto;
-}
+/* 按钮 */
+.btn-row { margin-top: 12px; flex: 0 0 auto; min-height: fit-content; width: 100%; }
+.query-btn-row { width: 100%; }
+.action-btn { white-space: nowrap; flex-shrink: 0; }
+.favorite-btn { background: #8e44ad; }
+.favorite-list-btn { background: #34495e; }
+.danger-main-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.form-item {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
+/* CodeMirror */
+.center-card :deep(.cm-editor) { height: 100%; width: 100%; }
+.center-card :deep(.cm-scroller) { overflow: auto; width: 100%; height: 100%; }
+.center-card :deep(.cm-gutters) { flex-shrink: 0; border-right: 1px solid #ebeef5; background: #f8f9fb; }
+.center-card :deep(.cm-lineNumbers) { min-width: 40px; }
+.center-card :deep(.cm-content) { min-width: 0; padding-bottom: 8px; }
+.center-card :deep(.cm-focused) { outline: none; }
 
-.form-item label {
-  color: #333;
-  font-size: 14px;
-}
-
-select {
-  width: 100%;
-  padding: 10px 12px;
-  font-family: Consolas, Monaco, monospace;
-  font-size: 16px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background: #fff;
-}
-
-.conn-tip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px;
-  margin-bottom: 12px;
-  padding: 12px 14px;
-  background: #f5f7fa;
-  border-radius: 8px;
-  color: #666;
-  flex: 0 0 auto;
-}
-
-.conn-warning {
-  color: #f56c6c;
-  font-weight: bold;
-}
-
-.editor-toolbar {
-  margin-bottom: 10px;
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  flex: 0 0 auto;
-}
-
-.query-editor-outer {
-  width: 100%;
-  min-width: 0;
-  margin-bottom: 12px;
-  flex: 1 1 auto;
-  min-height: 200px;  /* 设置绝对最小高度 */
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;  /* 防止内容溢出 */
-}
-
-.query-editor-wrap {
-  width: 100%;
-  height: 100%; /* 改为 100% */
-  min-height: 200px; /* 设置最小高度而不是固定高度 */
-  max-height: 100%;
-  overflow: hidden;
-  border: 1px solid #dcdfe6;
-  border-radius: 6px;
-  background: #fff;
-  flex: 1 1 auto;
-}
-
-.btn-row {
-  margin-top: 12px;  /* 增加上边距，确保与编辑器分离 */
-  margin-bottom: 0;
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  flex: 0 0 auto;  /* 不允许压缩 */
-  min-height: fit-content;
-  width: 100%;
-}
-
-.query-btn-row {
-  width: 100%;
-  justify-content: flex-start;
-  align-items: center;
-}
-
-.query-panel-bottom-space {
-  display: none; /* 移除多余的撑开空间 */
-}
-
-.action-btn {
-  padding: 10px 20px;
-  font-size: 16px;
-  cursor: pointer;
-  border: none;
-  border-radius: 6px;
-  color: #fff;
-  white-space: nowrap;  /* 防止按钮文字换行 */
-  flex-shrink: 0;  /* 防止按钮被压缩 */
-}
-
-.small-btn {
-  padding: 8px 14px;
-  font-size: 14px;
-}
-
-.primary-btn {
-  background: #409eff;
-}
-
-.secondary-btn {
-  background: #909399;
-}
-
-.success-btn {
-  background: #67c23a;
-}
-
-.danger-main-btn {
-  background: #f56c6c;
-}
-
-.favorite-btn {
-  background: #8e44ad;
-}
-
-.favorite-list-btn {
-  background: #34495e;
-}
-
-.danger-main-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.center-card :deep(.cm-editor) {
-  height: 100%;
-  width: 100%;
-}
-
-.center-card :deep(.cm-scroller) {
-  overflow: auto;
-  width: 100%;
-  height: 100%;
-}
-
-.center-card :deep(.cm-gutters) {
-  flex-shrink: 0;
-  border-right: 1px solid #ebeef5;
-  background: #f8f9fb;
-}
-
-.center-card :deep(.cm-lineNumbers) {
-  min-width: 40px;
-}
-
-.center-card :deep(.cm-content) {
-  min-width: 0;
-  padding-bottom: 8px;
-}
-
-.center-card :deep(.cm-focused) {
-  outline: none;
-}
-
-/* 响应式调整 */
+/* 响应式 */
 @media (max-width: 768px) {
-  .center-card {
-    max-height: calc(100vh - 100px);
-  }
-
-  .query-editor-wrap {
-    min-height: 150px; /* 小屏幕下减少最小高度 */
-  }
-
-  .query-form-grid {
-    grid-template-columns: 1fr; /* 小屏幕单列 */
-  }
-
-  .btn-row {
-    justify-content: center; /* 小屏幕按钮居中 */
-  }
+  .center-card { max-height: calc(100vh - 100px); }
+  .query-editor-wrap { min-height: 150px; }
+  .query-form-grid { grid-template-columns: 1fr; }
+  .btn-row { justify-content: center; }
 }
 </style>

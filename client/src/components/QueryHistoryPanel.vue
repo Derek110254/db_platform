@@ -65,103 +65,24 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
-.card {
-  width: 100%;
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  padding: 24px;
-  margin-bottom: 24px;
-  background: #fff;
-}
+/* 组件特有样式（公共样式见 global.css） */
 
-.side-card {
-  height: clamp(620px, calc(100vh - 230px), 900px);
-  min-height: clamp(620px, calc(100vh - 230px), 900px);
-  overflow: auto;
-}
+/* 侧边栏卡片 */
+.side-card { height: clamp(620px, calc(100vh - 230px), 900px); min-height: clamp(620px, calc(100vh - 230px), 900px); overflow: auto; }
 
-h2 {
-  margin-top: 0;
-  color: #2c3e50;
-}
+/* 历史列表 */
+.history-list { display: flex; flex-direction: column; gap: 12px; }
+.history-item { border: 1px solid #ebeef5; border-radius: 8px; padding: 12px; background: #fafafa; }
+.history-top { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+.history-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+.db-type { padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #333; font-size: 12px; }
+.conn-name { font-size: 12px; color: #666; }
+.history-actions { display: flex; gap: 6px; }
+.history-time { margin-top: 8px; font-size: 12px; color: #999; }
+.history-sql { margin: 8px 0 0; font-size: 12px; white-space: pre-wrap; word-break: break-word; color: #333; }
 
-.empty-tip {
-  color: #999;
-  font-size: 14px;
-}
-
-.history-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.history-item {
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  padding: 12px;
-  background: #fafafa;
-}
-
-.history-top {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  align-items: flex-start;
-}
-
-.history-meta {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.db-type {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: #eef2ff;
-  color: #333;
-  font-size: 12px;
-}
-
-.conn-name {
-  font-size: 12px;
-  color: #666;
-}
-
-.history-actions {
-  display: flex;
-  gap: 6px;
-}
-
-.mini-btn {
-  padding: 4px 10px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  color: #fff;
-  font-size: 12px;
-}
-
-.use-btn {
-  background: #409eff;
-}
-
-.delete-btn {
-  background: #f56c6c;
-}
-
-.history-time {
-  margin-top: 8px;
-  font-size: 12px;
-  color: #999;
-}
-
-.history-sql {
-  margin: 8px 0 0;
-  font-size: 12px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: #333;
-}
+/* 按钮 */
+.mini-btn { font-size: 12px; }
+.use-btn { background: #409eff; }
+.delete-btn { background: #f56c6c; }
 </style>

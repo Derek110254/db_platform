@@ -34,6 +34,7 @@
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AdminConnectionPanel from './components/AdminConnectionPanel.vue'
+import { useToasts, useConfirm, resolveConfirm } from './utils/toast'
 import AdminUserPanel from './components/AdminUserPanel.vue'
 import AdminAuditPanel from './components/AdminAuditPanel.vue'
 import HomePanel from './components/HomePanel.vue'
@@ -154,6 +155,29 @@ const resolvePageByPath = (): PageType => {
  * 当前页面
  */
 const currentPage = ref<PageType>(resolvePageByPath())
+
+/**
+ * 面包屑：根据当前页面生成标题
+ */
+const pageTitles: Record<string, string> = {
+  'home': 'SQL 自查工具',
+  'query': '数据库查询',
+  'query-plan': 'SQL 性能检测',
+  'audit-history': '审核历史',
+  'db-change-requests': '数据库变更申请',
+  'db-data-sync-requests': '数据同步申请',
+  'admin-users': '用户管理',
+  'admin-connections': '查询数据库管理',
+  'admin-audits': 'SQL 审核管理',
+  'admin-db-change-release': '数据库变更管理',
+  'admin-db-data-sync-requests': '数据同步管理',
+  'admin-team-db-envs': '团队数据库环境',
+  'admin-db-alert-handles': '数据库告警处理',
+  'admin-ops-change-records': '运维变更记录',
+}
+const breadcrumbTitle = computed(() => pageTitles[currentPage.value] || '首页')
+const sidebarCollapsed = ref(false)
+const toggleSidebar = () => { sidebarCollapsed.value = !sidebarCollapsed.value }
 
 /**
  * 登录相关状态
@@ -1367,160 +1391,97 @@ const scrollToTop = () => {
 </script>
 
 <template>
-  <div class="page-root">
-    <div class="wrap">
-      <!-- 页面头部 -->
-      <div class="header-row">
-        <div class="header-main">
-          <h1>SQL 综合管理平台</h1>
-          <p class="platform-desc">
-            未登录用户仅可访问 SQL 自查工具；登录后解锁更多功能。
-          </p>
-        </div>
+  <div class="app-layout">
+    <!-- 左侧导航栏 -->
+    <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
+      <div class="sidebar-brand" v-if="!sidebarCollapsed">SQL 综合管理平台</div>
+      <div class="sidebar-brand" v-else>SQL</div>
 
-        <div class="header-auth">
+      <nav class="sidebar-nav">
+        <div class="nav-group-label" v-if="!sidebarCollapsed">主要功能</div>
+        <button :class="['nav-item', currentPage === 'home' ? 'active' : '']" @click="navigateTo('home')" type="button" :title="sidebarCollapsed ? 'SQL 自查工具' : ''">
+          <span class="nav-icon">🔍</span><span v-if="!sidebarCollapsed">SQL 自查工具</span>
+        </button>
+        <button v-if="hasQueryDataPermission" :class="['nav-item', currentPage === 'query' ? 'active' : '']" @click="navigateTo('query')" type="button" :title="sidebarCollapsed ? '数据库查询' : ''">
+          <span class="nav-icon">📊</span><span v-if="!sidebarCollapsed">数据库查询</span>
+        </button>
+        <button v-if="hasQueryPlanPermission" :class="['nav-item', currentPage === 'query-plan' ? 'active' : '']" @click="navigateTo('query-plan')" type="button" :title="sidebarCollapsed ? 'SQL 性能检测' : ''">
+          <span class="nav-icon">⚡</span><span v-if="!sidebarCollapsed">SQL 性能检测</span>
+        </button>
+
+        <template v-if="isAuthenticated">
+          <div class="nav-group-label" v-if="!sidebarCollapsed">我的申请</div>
+          <button :class="['nav-item', currentPage === 'db-change-requests' ? 'active' : '']" @click="navigateTo('db-change-requests')" type="button" :title="sidebarCollapsed ? '数据库变更申请' : ''">
+            <span class="nav-icon">📝</span><span v-if="!sidebarCollapsed">数据库变更申请</span>
+          </button>
+          <button :class="['nav-item', currentPage === 'db-data-sync-requests' ? 'active' : '']" @click="navigateTo('db-data-sync-requests')" type="button" :title="sidebarCollapsed ? '数据同步申请' : ''">
+            <span class="nav-icon">🔄</span><span v-if="!sidebarCollapsed">数据同步申请</span>
+          </button>
+          <button :class="['nav-item', currentPage === 'audit-history' ? 'active' : '']" @click="navigateTo('audit-history')" type="button" :title="sidebarCollapsed ? '审核历史' : ''">
+            <span class="nav-icon">📋</span><span v-if="!sidebarCollapsed">审核历史</span>
+          </button>
+        </template>
+
+        <template v-if="isAdmin">
+          <div class="nav-group-label" v-if="!sidebarCollapsed">管理功能</div>
+          <button :class="['nav-item', currentPage === 'admin-audits' ? 'active' : '']" @click="navigateTo('admin-audits')" type="button" :title="sidebarCollapsed ? 'SQL 审核管理' : ''">
+            <span class="nav-icon">✅</span><span v-if="!sidebarCollapsed">SQL 审核管理</span>
+          </button>
+          <button :class="['nav-item', currentPage === 'admin-db-change-release' ? 'active' : '']" @click="navigateTo('admin-db-change-release')" type="button" :title="sidebarCollapsed ? '数据库变更管理' : ''">
+            <span class="nav-icon">📦</span><span v-if="!sidebarCollapsed">数据库变更管理</span>
+          </button>
+          <button :class="['nav-item', currentPage === 'admin-db-data-sync-requests' ? 'active' : '']" @click="navigateTo('admin-db-data-sync-requests')" type="button" :title="sidebarCollapsed ? '数据同步管理' : ''">
+            <span class="nav-icon">🔁</span><span v-if="!sidebarCollapsed">数据同步管理</span>
+          </button>
+          <button :class="['nav-item', currentPage === 'admin-connections' ? 'active' : '']" @click="navigateTo('admin-connections')" type="button" :title="sidebarCollapsed ? '查询数据库管理' : ''">
+            <span class="nav-icon">🗄</span><span v-if="!sidebarCollapsed">查询数据库管理</span>
+          </button>
+          <button :class="['nav-item', currentPage === 'admin-team-db-envs' ? 'active' : '']" @click="navigateTo('admin-team-db-envs')" type="button" :title="sidebarCollapsed ? '团队数据库环境' : ''">
+            <span class="nav-icon">🌍</span><span v-if="!sidebarCollapsed">团队数据库环境</span>
+          </button>
+          <button :class="['nav-item', currentPage === 'admin-db-alert-handles' ? 'active' : '']" @click="navigateTo('admin-db-alert-handles')" type="button" :title="sidebarCollapsed ? '数据库告警处理' : ''">
+            <span class="nav-icon">🚨</span><span v-if="!sidebarCollapsed">数据库告警处理</span>
+          </button>
+          <button :class="['nav-item', currentPage === 'admin-ops-change-records' ? 'active' : '']" @click="navigateTo('admin-ops-change-records')" type="button" :title="sidebarCollapsed ? '运维变更记录' : ''">
+            <span class="nav-icon">🔧</span><span v-if="!sidebarCollapsed">运维变更记录</span>
+          </button>
+          <button :class="['nav-item', currentPage === 'admin-users' ? 'active' : '']" @click="navigateTo('admin-users')" type="button" :title="sidebarCollapsed ? '用户管理' : ''">
+            <span class="nav-icon">👥</span><span v-if="!sidebarCollapsed">用户管理</span>
+          </button>
+        </template>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button class="sidebar-toggle-btn" @click="toggleSidebar" type="button">
+          {{ sidebarCollapsed ? '▶' : '◀ 折叠' }}
+        </button>
+      </div>
+    </aside>
+
+    <!-- 右侧主区域 -->
+    <div class="main-area">
+      <!-- 顶栏：面包屑 + 用户信息 -->
+      <div class="topbar">
+        <div class="breadcrumb">
+          <span class="breadcrumb-home" @click="navigateTo('home')">首页</span>
+          <span class="breadcrumb-sep">/</span>
+          <span class="breadcrumb-current">{{ breadcrumbTitle }}</span>
+        </div>
+        <div class="topbar-user">
           <template v-if="isAuthenticated && currentUser">
-            <div class="user-dropdown">
-              <div class="user-info">
-                <div class="user-name">
-                  {{ currentUser.displayName || currentUser.username }}
-                  <span class="dropdown-icon">▼</span>
-                </div>
-                <div class="user-sub">
-                  {{ currentUser.username }}
-                </div>
-              </div>
-              <div class="user-dropdown-menu">
-                <button
-                  v-if="isAdmin"
-                  class="user-dropdown-item"
-                  @click="navigateTo('admin-audits')"
-                  type="button"
-                >
-                  SQL 审核管理
-                </button>
-                <button
-                  v-if="isAdmin"
-                  class="user-dropdown-item"
-                  @click="navigateTo('admin-db-change-release')"
-                  type="button"
-                >
-                  数据库变更管理
-                </button>
-                <button
-                  v-if="isAdmin"
-                  class="user-dropdown-item"
-                  @click="navigateTo('admin-db-data-sync-requests')"
-                  type="button"
-                >
-                  数据同步管理
-                </button>
-                <button
-                  v-if="isAdmin"
-                  class="user-dropdown-item"
-                  @click="navigateTo('admin-connections')"
-                  type="button"
-                >
-                  查询数据库管理
-                </button>
-                <button
-                  v-if="isAdmin"
-                  class="user-dropdown-item"
-                  @click="navigateTo('admin-team-db-envs')"
-                  type="button"
-                >
-                  团队数据库环境
-                </button>
-                <button
-                  v-if="isAdmin"
-                  class="user-dropdown-item"
-                  @click="navigateTo('admin-db-alert-handles')"
-                  type="button"
-                >
-                  数据库告警处理
-                </button>
-                <button
-                  v-if="isAdmin"
-                  class="user-dropdown-item"
-                  @click="navigateTo('admin-ops-change-records')"
-                  type="button"
-                >
-                  运维变更记录
-                </button>
-                <button
-                  v-if="isAdmin"
-                  class="user-dropdown-item"
-                  @click="navigateTo('admin-users')"
-                  type="button"
-                >
-                  用户管理
-                </button>
-                <div v-if="isAdmin" class="user-dropdown-divider"></div>
-                <button class="user-dropdown-item" @click="openChangePasswordDialog" type="button">
-                  修改密码
-                </button>
-                <button class="user-dropdown-item logout-text" @click="logout" type="button">
-                  退出登录
-                </button>
-              </div>
-            </div>
+            <span class="user-name-tag">{{ currentUser.displayName || currentUser.username }}</span>
+            <span v-if="isAdmin" class="role-badge">管理员</span>
+            <button class="topbar-btn" @click="openChangePasswordDialog" type="button">修改密码</button>
+            <button class="topbar-btn logout" @click="logout" type="button">退出</button>
           </template>
-
           <template v-else>
-            <button class="auth-btn login-btn" @click="openLoginDialog" type="button">
-              登录
-            </button>
+            <button class="topbar-btn login" @click="openLoginDialog" type="button">登录</button>
           </template>
         </div>
       </div>
 
-      <!-- 顶部导航 -->
-      <div class="top-nav-row">
-        <button
-          :class="['nav-btn', currentPage === 'home' ? 'active' : '']"
-          @click="navigateTo('home')"
-          type="button"
-        >
-          SQL 自查工具
-        </button>
-
-        <button
-          v-if="hasQueryDataPermission"
-          :class="['nav-btn', currentPage === 'query' ? 'active' : '']"
-          @click="navigateTo('query')"
-          type="button"
-        >
-          数据库查询
-        </button>
-
-        <button
-          v-if="hasQueryPlanPermission"
-          :class="['nav-btn', currentPage === 'query-plan' ? 'active' : '']"
-          @click="navigateTo('query-plan')"
-          type="button"
-        >
-          SQL 性能检测
-        </button>
-
-        <button
-          v-if="isAuthenticated"
-          :class="['nav-btn', currentPage === 'db-change-requests' ? 'active' : '']"
-          @click="navigateTo('db-change-requests')"
-          type="button"
-        >
-          数据库变更申请
-        </button>
-
-        <button
-          v-if="isAuthenticated"
-          :class="['nav-btn', currentPage === 'db-data-sync-requests' ? 'active' : '']"
-          @click="navigateTo('db-data-sync-requests')"
-          type="button"
-        >
-          数据同步申请
-        </button>
-
-      </div>
+      <!-- 内容区 -->
+      <div class="content-area">
 
       <!-- 首页 -->
       <template v-if="currentPage === 'home'">
@@ -1729,7 +1690,8 @@ const scrollToTop = () => {
       <template v-else-if="currentPage === 'admin-ops-change-records'">
         <AdminOpsChangePanel />
       </template>
-    </div>
+      </div><!-- content-area -->
+    </div><!-- main-area -->
 
     <!-- 登录弹窗 -->
     <LoginDialog
@@ -1770,6 +1732,29 @@ const scrollToTop = () => {
     <button class="back-top-btn" @click="scrollToTop" type="button">
       回到顶部
     </button>
+
+    <!-- 全局 Toast 通知 -->
+    <div class="toast-container">
+      <div
+        v-for="t in useToasts().value"
+        :key="t.id"
+        :class="['toast-item', `toast-${t.type}`]"
+      >
+        {{ t.message }}
+      </div>
+    </div>
+
+    <!-- 全局 Confirm 确认弹窗 -->
+    <div v-if="useConfirm().value.visible" class="confirm-overlay" @click.self="resolveConfirm(false)">
+      <div class="confirm-box">
+        <h3>{{ useConfirm().value.title }}</h3>
+        <p class="confirm-message">{{ useConfirm().value.message }}</p>
+        <div class="confirm-actions">
+          <button class="action-btn secondary-btn" @click="resolveConfirm(false)" type="button">取消</button>
+          <button class="action-btn danger-btn" @click="resolveConfirm(true)" type="button">确定</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -1782,24 +1767,201 @@ const scrollToTop = () => {
   width: 100%;
   min-width: 100%;
   min-height: 100%;
-  background: #f5f7fa;
+  background: #f0f2f5;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-size: 14px;
+  color: #303133;
 }
 
 :global(*) {
   box-sizing: border-box;
 }
 
-.page-root {
-  width: 100%;
+/* ========== Zabbix 风格布局 ========== */
+.app-layout {
+  display: flex;
   min-height: 100vh;
+  background: #f0f2f5;
 }
 
-.wrap {
+/* 左侧导航栏 */
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: #1f2937;
+  color: #d1d5db;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.2s;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.sidebar.collapsed {
+  width: 56px;
+}
+
+.sidebar-brand {
+  padding: 16px;
+  font-size: 16px;
+  font-weight: bold;
+  color: #fff;
+  text-align: center;
+  border-bottom: 1px solid #374151;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: 8px 0;
+}
+
+.nav-group-label {
+  padding: 8px 16px 4px;
+  font-size: 11px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   width: 100%;
-  max-width: 1580px;
-  margin: 0 auto;
-  padding: 40px 16px;
-  font-family: Arial, sans-serif;
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  color: #d1d5db;
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.nav-item:hover {
+  background: #374151;
+}
+.nav-item.active {
+  background: #3b82f6;
+  color: #fff;
+}
+.nav-icon {
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+
+.sidebar-footer {
+  border-top: 1px solid #374151;
+  padding: 8px;
+}
+.sidebar-toggle-btn {
+  width: 100%;
+  padding: 6px;
+  background: transparent;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 13px;
+}
+.sidebar-toggle-btn:hover {
+  color: #d1d5db;
+}
+
+/* 右侧主区域 */
+.main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* 顶栏 */
+.topbar {
+  height: 48px;
+  background: #fff;
+  border-bottom: 1px solid #e4e7ed;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  flex-shrink: 0;
+}
+
+.breadcrumb {
+  font-size: 14px;
+  color: #909399;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.breadcrumb-home {
+  cursor: pointer;
+  color: #606266;
+}
+.breadcrumb-home:hover {
+  color: #409eff;
+}
+.breadcrumb-sep {
+  color: #c0c4cc;
+}
+.breadcrumb-current {
+  color: #303133;
+  font-weight: 500;
+}
+
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.user-name-tag {
+  font-size: 14px;
+  color: #303133;
+  font-weight: 500;
+}
+.role-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  background: #f56c6c;
+  color: #fff;
+  border-radius: 3px;
+}
+.topbar-btn {
+  padding: 4px 12px;
+  font-size: 13px;
+  background: transparent;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  color: #606266;
+  cursor: pointer;
+}
+.topbar-btn:hover {
+  color: #409eff;
+  border-color: #409eff;
+}
+.topbar-btn.logout:hover {
+  color: #f56c6c;
+  border-color: #f56c6c;
+}
+.topbar-btn.login {
+  background: #409eff;
+  color: #fff;
+  border-color: #409eff;
+}
+
+/* 内容区 */
+.content-area {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
 }
 
 .header-row {
@@ -2058,5 +2220,70 @@ h2 {
 
 .back-top-btn:hover {
   background: #2f86d6;
+}
+
+/* ========== 全局 Toast ========== */
+.toast-container {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast-item {
+  padding: 10px 24px;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  animation: toast-slide 0.3s ease;
+}
+.toast-success { background: #67c23a; }
+.toast-error { background: #f56c6c; }
+.toast-warning { background: #e6a23c; }
+.toast-info { background: #909399; }
+@keyframes toast-slide {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ========== 全局 Confirm ========== */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.confirm-box {
+  background: #fff;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 420px;
+  padding: 24px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+}
+.confirm-box h3 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  color: #303133;
+}
+.confirm-message {
+  margin: 0 0 20px;
+  font-size: 15px;
+  color: #606266;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
 </style>

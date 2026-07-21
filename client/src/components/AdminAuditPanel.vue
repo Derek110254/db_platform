@@ -291,366 +291,71 @@ const getAuditStatusClass = (auditPassed: number) => {
 </template>
 
 <style scoped>
-.toast-message {
-  position: fixed;
-  top: 40px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.75);
-  color: #fff;
-  padding: 12px 24px;
-  border-radius: 6px;
-  z-index: 5000;
-  font-size: 15px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  animation: fadeIn 0.3s ease;
-}
+/* 组件特有样式（公共样式见 global.css） */
+.admin-page { width: 100%; }
 
-@keyframes fadeIn {
-  from { opacity: 0; top: 20px; }
-  to { opacity: 1; top: 40px; }
-}
+/* Toast */
+.toast-message { position: fixed; top: 40px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.75); color: #fff; padding: 12px 24px; border-radius: 6px; z-index: 5000; font-size: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; top: 20px; } to { opacity: 1; top: 40px; } }
 
-.admin-page {
-  width: 100%;
-}
+/* 卡片布局 */
+.center-card, .wide-center-card { min-height: 600px; height: auto; display: flex; flex-direction: column; }
+h2 { flex: 0 0 auto; }
+.module-tip { margin-bottom: 12px; padding: 12px 14px; line-height: 1.8; background: #f5f7fa; border-radius: 8px; color: #666; flex: 0 0 auto; }
 
-.card {
-  width: 100%;
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  padding: 24px;
-  margin-bottom: 24px;
-  background: #fff;
-}
+/* 搜索栏 */
+.search-row { display: flex; gap: 12px; margin-bottom: 15px; align-items: center; }
+.search-input { flex: 1; }
+.search-select { background-color: #fff; cursor: pointer; }
+.search-select:focus { border-color: #409eff; }
 
-.center-card,
-.wide-center-card {
-  min-height: 600px;
-  height: auto;
-  display: flex;
-  flex-direction: column;
-}
+/* 按钮特有 */
+.action-btn { white-space: nowrap; }
+.primary-btn:hover { background: #66b1ff; }
+.success-btn:hover { background: #85ce61; }
+.danger-btn:hover { background: #f78989; }
+.action-btn:disabled { background-color: #f3f4f6; color: #c0c4cc; cursor: not-allowed; border-color: #ebeef5; }
 
-h2 {
-  margin-top: 0;
-  color: #2c3e50;
-  flex: 0 0 auto;
-}
+/* 状态消息 */
+.status-message { margin-bottom: 15px; padding: 12px 16px; border-radius: 6px; background: #fdf6ec; color: #e6a23c; font-size: 14px; font-weight: 500; border-left: 4px solid #e6a23c; }
 
-.module-tip {
-  margin-bottom: 12px;
-  padding: 12px 14px;
-  line-height: 1.8;
-  background: #f5f7fa;
-  border-radius: 8px;
-  color: #666;
-  flex: 0 0 auto;
-}
+/* 历史记录卡片 */
+.history-list-wrapper { display: flex; flex-direction: column; gap: 20px; flex: 1 1 auto; }
+.history-item-card { border: 1px solid #ebeef5; border-radius: 8px; background: #fafafa; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+.history-header { padding: 12px 16px; background: #f5f7fa; border-bottom: 1px solid #ebeef5; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.history-meta { font-size: 14px; color: #333; }
+.meta-label { color: #909399; }
+.meta-value { font-weight: 500; color: #303133; }
+.margin-left { margin-left: 20px; }
+.history-score { font-size: 14px; padding: 4px 10px; border-radius: 12px; font-weight: bold; background: #f4f4f5; color: #909399; }
+.score-high { background: #f0f9eb; color: #67c23a; }
+.score-medium { background: #fdf6ec; color: #e6a23c; }
+.score-low { background: #fef0f0; color: #f56c6c; }
 
-.search-row {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 15px;
-  align-items: center;
-}
+/* 状态徽章 */
+.status-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+.status-passed { background: #f0f9eb; color: #67c23a; border: 1px solid #e1f3d8; }
+.status-rejected { background: #fef0f0; color: #f56c6c; border: 1px solid #fde2e2; }
+.status-pending { background: #fdf6ec; color: #e6a23c; border: 1px solid #faecd8; }
 
-.search-input {
-  flex: 1;
-  padding: 8px 12px;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  font-size: 14px;
-  font-family: Consolas, Monaco, monospace;
-  outline: none;
-}
+/* 记录内容 */
+.history-body { padding: 16px; background: #fff; position: relative; }
+.history-remark { margin-bottom: 12px; font-size: 14px; color: #606266; background: #fdf6ec; padding: 8px 12px; border-radius: 4px; }
+.history-sql-label { font-size: 13px; color: #909399; margin-bottom: 8px; }
+.history-sql-pre { margin: 0; padding: 12px; background: #f8f9fb; border: 1px solid #e4e7ed; border-radius: 4px; font-family: Consolas, Monaco, "Courier New", monospace; font-size: 13px; color: #303133; white-space: pre-wrap; word-break: break-all; }
+.empty-plan-tip { padding: 12px; color: #909399; font-size: 13px; background: #f8f9fb; border: 1px solid #e4e7ed; border-radius: 4px; }
+.review-actions { margin-top: 15px; display: flex; gap: 10px; justify-content: flex-end; }
 
-.search-input:focus {
-  border-color: #409eff;
-}
+/* AI 区域 */
+.history-ai-section { border-top: 1px solid #e4e7ed; background: #ecf5ff; }
+.ai-header { background: #d9ecff; padding: 10px 16px; font-weight: bold; color: #409eff; display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.ai-icon { font-size: 16px; }
+.ai-content { padding: 16px; line-height: 1.8; color: #303133; white-space: pre-wrap; word-break: break-all; font-size: 14px; background: #fff; }
 
-.search-select {
-  padding: 8px 12px;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  font-size: 14px;
-  font-family: Consolas, Monaco, monospace;
-  outline: none;
-  background-color: #fff;
-  cursor: pointer;
-}
-
-.search-select:focus {
-  border-color: #409eff;
-}
-
-.action-btn {
-  padding: 10px 20px;
-  font-size: 16px;
-  cursor: pointer;
-  border: none;
-  border-radius: 6px;
-  color: #fff;
-  white-space: nowrap;
-}
-
-.small-btn {
-  padding: 8px 14px;
-  font-size: 14px;
-}
-
-.primary-btn {
-  background: #409eff;
-}
-
-.primary-btn:hover {
-  background: #66b1ff;
-}
-
-.secondary-btn {
-  background: #909399;
-}
-
-.success-btn {
-  background: #67c23a;
-}
-
-.success-btn:hover {
-  background: #85ce61;
-}
-
-.danger-btn {
-  background: #f56c6c;
-}
-
-.danger-btn:hover {
-  background: #f78989;
-}
-
-.status-message {
-  margin-bottom: 15px;
-  padding: 12px 16px;
-  border-radius: 6px;
-  background-color: #fdf6ec;
-  color: #e6a23c;
-  font-size: 14px;
-  font-weight: 500;
-  border-left: 4px solid #e6a23c;
-}
-
-.history-list-wrapper {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  flex: 1 1 auto;
-}
-
-.history-item-card {
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  background-color: #fafafa;
-  overflow: hidden;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-}
-
-.history-header {
-  padding: 12px 16px;
-  background-color: #f5f7fa;
-  border-bottom: 1px solid #ebeef5;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.history-meta {
-  font-size: 14px;
-  color: #333;
-}
-
-.meta-label {
-  color: #909399;
-}
-
-.meta-value {
-  font-weight: 500;
-  color: #303133;
-}
-
-.margin-left {
-  margin-left: 20px;
-}
-
-.history-score {
-  font-size: 14px;
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-weight: bold;
-  background: #f4f4f5;
-  color: #909399;
-}
-
-.score-high {
-  background: #f0f9eb;
-  color: #67c23a;
-}
-
-.score-medium {
-  background: #fdf6ec;
-  color: #e6a23c;
-}
-
-.score-low {
-  background: #fef0f0;
-  color: #f56c6c;
-}
-
-.status-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: bold;
-}
-
-.status-passed {
-  background-color: #f0f9eb;
-  color: #67c23a;
-  border: 1px solid #e1f3d8;
-}
-
-.status-rejected {
-  background-color: #fef0f0;
-  color: #f56c6c;
-  border: 1px solid #fde2e2;
-}
-
-.status-pending {
-  background-color: #fdf6ec;
-  color: #e6a23c;
-  border: 1px solid #faecd8;
-}
-
-.history-body {
-  padding: 16px;
-  background: #fff;
-  position: relative;
-}
-
-.history-remark {
-  margin-bottom: 12px;
-  font-size: 14px;
-  color: #606266;
-  background: #fdf6ec;
-  padding: 8px 12px;
-  border-radius: 4px;
-}
-
-.history-sql-label {
-  font-size: 13px;
-  color: #909399;
-  margin-bottom: 8px;
-}
-
-.history-sql-pre {
-  margin: 0;
-  padding: 12px;
-  background-color: #f8f9fb;
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
-  font-family: Consolas, Monaco, "Courier New", monospace;
-  font-size: 13px;
-  color: #303133;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.empty-plan-tip {
-  padding: 12px;
-  color: #909399;
-  font-size: 13px;
-  background-color: #f8f9fb;
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
-}
-
-.review-actions {
-  margin-top: 15px;
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-}
-
-.history-ai-section {
-  border-top: 1px solid #e4e7ed;
-  background-color: #ecf5ff;
-}
-
-.ai-header {
-  background-color: #d9ecff;
-  padding: 10px 16px;
-  font-weight: bold;
-  color: #409eff;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-}
-
-.ai-icon {
-  font-size: 16px;
-}
-
-.ai-content {
-  padding: 16px;
-  line-height: 1.8;
-  color: #303133;
-  white-space: pre-wrap; 
-  word-break: break-all;
-  font-size: 14px;
-  background-color: #fff;
-}
-
-.pagination-container {
-  margin-top: 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 15px;
-  border-top: 1px solid #ebeef5;
-}
-
-.pagination-info {
-  font-size: 14px;
-  color: #606266;
-}
-
-.pagination-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.page-size-select {
-  padding: 6px 10px;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  font-size: 14px;
-  outline: none;
-  background-color: #fff;
-  color: #606266;
-  cursor: pointer;
-}
-
-.page-size-select:focus {
-  border-color: #409eff;
-}
-
-.action-btn:disabled {
-  background-color: #f3f4f6;
-  color: #c0c4cc;
-  cursor: not-allowed;
-  border-color: #ebeef5;
-}
+/* 分页（本组件独有布局） */
+.pagination-container { margin-top: 20px; display: flex; justify-content: space-between; align-items: center; padding-top: 15px; border-top: 1px solid #ebeef5; }
+.pagination-info { font-size: 14px; color: #606266; }
+.pagination-actions { display: flex; gap: 10px; align-items: center; }
+.page-size-select { padding: 6px 10px; background: #fff; color: #606266; cursor: pointer; }
+.page-size-select:focus { border-color: #409eff; }
 </style>

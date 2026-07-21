@@ -500,225 +500,36 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.favorite-modal-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 3000;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
+/* 组件特有样式（公共样式见 global.css） */
 
-.favorite-modal {
-  width: min(1200px, 100%);
-  max-height: 90vh;
-  overflow: auto;
-  background: #fff;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
-}
+/* 弹窗 */
+.favorite-modal-mask { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; padding: 24px; }
+.favorite-modal { width: min(1200px, 100%); max-height: 90vh; overflow: auto; background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 12px 32px rgba(0,0,0,0.2); }
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.modal-header h2 { margin: 0; color: #2c3e50; }
+.close-btn { padding: 8px 14px; border: none; border-radius: 6px; background: #909399; color: #fff; cursor: pointer; }
 
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
+/* 卡片区 */
+.filter-card, .edit-card, .list-card { border: 1px solid #ebeef5; border-radius: 10px; padding: 16px; background: #fafafa; margin-bottom: 16px; }
 
-.modal-header h2 {
-  margin: 0;
-  color: #2c3e50;
-}
+/* 表单（两列） */
+.filter-grid, .form-grid { display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 14px; margin-bottom: 14px; }
 
-.close-btn {
-  padding: 8px 14px;
-  border: none;
-  border-radius: 6px;
-  background: #909399;
-  color: #fff;
-  cursor: pointer;
-}
+/* 收藏列表 */
+.favorite-list { display: flex; flex-direction: column; gap: 12px; }
+.favorite-item { border: 1px solid #ebeef5; border-radius: 8px; padding: 12px; background: #fff; }
+.favorite-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.favorite-title-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.favorite-name { font-size: 15px; font-weight: 700; color: #2c3e50; }
+.pinned-tag { padding: 2px 8px; border-radius: 999px; background: #e6a23c; color: #fff; font-size: 12px; }
+.favorite-actions { display: flex; gap: 8px; }
+.mini-btn { font-size: 12px; }
+.favorite-meta { margin-top: 10px; display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: #909399; }
+.favorite-remark { margin-top: 10px; color: #666; font-size: 13px; }
+.favorite-sql { margin-top: 10px; padding: 12px; border-radius: 8px; background: #f5f7fa; white-space: pre-wrap; word-break: break-word; font-size: 12px; color: #333; max-height: 180px; overflow: auto; }
 
-.result {
-  margin-bottom: 12px;
-  color: #666;
-}
-
-.filter-card,
-.edit-card,
-.list-card {
-  border: 1px solid #ebeef5;
-  border-radius: 10px;
-  padding: 16px;
-  background: #fafafa;
-  margin-bottom: 16px;
-}
-
-.filter-grid,
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(260px, 1fr));
-  gap: 14px;
-  margin-bottom: 14px;
-}
-
-.form-item {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.form-item-full {
-  grid-column: 1 / -1;
-}
-
-.form-item label {
-  font-size: 14px;
-  color: #333;
-}
-
-input,
-select,
-textarea {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #dcdfe6;
-  border-radius: 6px;
-  font-size: 14px;
-  font-family: Consolas, Monaco, monospace;
-  background: #fff;
-}
-
-textarea {
-  resize: vertical;
-}
-
-.btn-row {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.action-btn {
-  padding: 10px 20px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  color: #fff;
-}
-
-.primary-btn {
-  background: #409eff;
-}
-
-.secondary-btn {
-  background: #909399;
-}
-
-.warning-btn {
-  background: #e6a23c;
-}
-
-.empty-tip {
-  color: #999;
-  font-size: 14px;
-}
-
-.favorite-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.favorite-item {
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  padding: 12px;
-  background: #fff;
-}
-
-.favorite-top {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.favorite-title-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.favorite-name {
-  font-size: 15px;
-  font-weight: 700;
-  color: #2c3e50;
-}
-
-.pinned-tag {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: #e6a23c;
-  color: #fff;
-  font-size: 12px;
-}
-
-.favorite-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.mini-btn {
-  padding: 6px 12px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  color: #fff;
-  font-size: 12px;
-}
-
-.use-btn {
-  background: #67c23a;
-}
-
-.edit-btn {
-  background: #409eff;
-}
-
-.delete-btn {
-  background: #f56c6c;
-}
-
-.favorite-meta {
-  margin-top: 10px;
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  font-size: 12px;
-  color: #909399;
-}
-
-.favorite-remark {
-  margin-top: 10px;
-  color: #666;
-  font-size: 13px;
-}
-
-.favorite-sql {
-  margin-top: 10px;
-  padding: 12px;
-  border-radius: 8px;
-  background: #f5f7fa;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 12px;
-  color: #333;
-  max-height: 180px;
-  overflow: auto;
-}
+/* 按钮 */
+.use-btn { background: #67c23a; }
+.edit-btn { background: #409eff; }
+.delete-btn { background: #f56c6c; }
 </style>

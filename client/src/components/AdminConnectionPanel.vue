@@ -28,6 +28,7 @@
  */
 
 import { computed, onMounted, ref, watch } from 'vue'
+import { showToast, showConfirm } from '../utils/toast'
 /**
  * 单条数据库连接配置
  */
@@ -327,7 +328,8 @@ const createConnection = async () => {
       return
     }
 
-    message.value = data.message || '创建连接配置成功'
+    message.value = ''
+    showToast(data.message || '创建连接配置成功', 'success')
     backToList()
   } catch (err) {
     console.error(err)
@@ -409,7 +411,8 @@ const updateConnection = async () => {
       return
     }
 
-    message.value = data.message || '编辑连接配置成功'
+    message.value = ''
+    showToast(data.message || '编辑连接配置成功', 'success')
     backToList()
   } catch (err) {
     console.error(err)
@@ -423,7 +426,7 @@ const updateConnection = async () => {
  * 删除连接配置
  */
 const deleteConnection = async (item: AdminConnectionItem) => {
-  const ok = window.confirm(`确定要删除连接【${item.name}】吗？`)
+  const ok = await showConfirm(`确定要删除连接【${item.name}】吗？`)
   if (!ok) return
 
   loading.value = true
@@ -445,7 +448,7 @@ const deleteConnection = async (item: AdminConnectionItem) => {
       return
     }
 
-    message.value = data.message || '删除连接配置成功'
+    showToast(data.message || '删除连接配置成功', 'success')
     await loadConnections()
   } catch (err) {
     console.error(err)
@@ -679,355 +682,34 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.admin-page {
-  width: 100%;
-}
+/* 组件特有样式（公共样式见 global.css） */
+.admin-page { width: 100%; }
 
-.card {
-  width: 100%;
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  padding: 24px;
-  margin-bottom: 24px;
-  background: #fff;
-}
+/* 启用/禁用标签颜色 */
+.enable-on { background: #67c23a; }
+.enable-off { background: #909399; }
 
-h2 {
-  margin-top: 0;
-  color: #2c3e50;
-}
+/* 按钮 */
+.edit-btn { background: #409eff; }
+.clone-btn { background: #e6a23c; }
+.delete-btn { background: #f56c6c; }
 
-.result {
-  margin-bottom: 12px;
-  font-size: 15px;
-  color: #666;
-}
+/* 分页（本组件独有的两栏布局） */
+.page-size { display: flex; align-items: center; gap: 6px; }
+.page-size select { width: auto; padding: 4px 8px; }
+.page-nav { display: flex; align-items: center; gap: 12px; }
 
-/**
- * 表单采用三列布局
- */
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.form-item {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.form-item label {
-  font-size: 14px;
-  color: #333;
-}
-
-input,
-select {
-  width: 100%;
-  padding: 10px 12px;
-  font-family: Consolas, Monaco, monospace;
-  font-size: 16px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  background: #fff;
-}
-
-.btn-row {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.action-btn {
-  padding: 10px 20px;
-  font-size: 16px;
-  cursor: pointer;
-  border: none;
-  border-radius: 6px;
-  color: #fff;
-}
-
-.primary-btn {
-  background: #409eff;
-}
-
-.secondary-btn {
-  background: #909399;
-}
-
-.warning-btn {
-  background: #e6a23c;
-}
-
-/**
- * 表格容器
- */
-.table-wrap {
-  width: 100%;
-  overflow-x: hidden;
-}
-
-.result-table {
-  width: 100%;
-  max-width: 100%;
-  border-collapse: collapse;
-  background: #fff;
-  table-layout: fixed;
-  box-sizing: border-box;
-}
-
-.result-table th,
-.result-table td {
-  border: 1px solid #ddd;
-  padding: 8px;
-  text-align: left;
-  vertical-align: top;
-  word-break: break-all;
-  overflow-wrap: break-word;
-}
-
-.result-table th {
-  background: #f5f7fa;
-  white-space: nowrap;
-}
-
-/**
- * 数据行支持双击进入编辑
- */
-.data-row {
-  cursor: pointer;
-}
-
-.data-row:hover {
-  background: #f5f7fa;
-}
-
-/**
- * 启用/禁用标签
- */
-.enable-tag {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 10px;
-  font-size: 13px;
-  color: #fff;
-}
-
-.enable-on {
-  background: #67c23a;
-}
-
-.enable-off {
-  background: #909399;
-}
-
-/**
- * 行内操作按钮
- */
-.row-btns {
-  display: flex;
-  gap: 6px;
-  flex-wrap: nowrap;
-  white-space: nowrap;
-}
-
-.mini-btn {
-  padding: 6px 12px;
-  font-size: 14px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  color: #fff;
-  line-height: 1.4;
-}
-
-.edit-btn {
-  background: #409eff;
-}
-
-.clone-btn {
-  background: #e6a23c;
-}
-
-.delete-btn {
-  background: #f56c6c;
-}
-
-/**
- * 列表头部
- */
-.table-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.table-header h2 {
-  margin-bottom: 0;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.search-input {
-  width: 200px;
-  padding: 8px 12px;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  font-size: 14px;
-  font-family: Consolas, Monaco, monospace;
-}
-
-.search-input:focus {
-  border-color: #409eff;
-  outline: none;
-}
-
-/**
- * 表单视图头部
- */
-.form-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.back-btn {
-  white-space: nowrap;
-}
-
-.empty-text {
-  text-align: center;
-  color: #999;
-  padding: 24px;
-}
-
-/**
- * 分页
- */
-.pagination {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 14px;
-  color: #606266;
-  margin-top: 20px;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.page-size {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.page-size select {
-  width: auto;
-  padding: 4px 8px;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  font-size: 14px;
-}
-
-.page-nav {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.pager-btn {
-  padding: 6px 12px;
-  border: 1px solid #dcdfe6;
-  background: #fff;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.pager-btn:disabled {
-  background: #f5f7fa;
-  color: #c0c4cc;
-  cursor: not-allowed;
-}
-
-/**
- * 自定义弹窗样式
- */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 9999;
-}
-
-.modal-container {
-  background-color: #fff;
-  border-radius: 8px;
-  width: 90%;
-  max-width: 450px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  overflow: hidden;
-  animation: modal-fade-in 0.3s ease-out;
-}
-
-.modal-header {
-  padding: 16px 20px;
-  background-color: #fef0f0;
-  border-bottom: 1px solid #fde2e2;
-}
-
-.modal-header h3 {
-  margin: 0;
-  color: #f56c6c;
-  font-size: 18px;
-}
-
-.modal-body {
-  padding: 24px 20px;
-}
-
-.modal-message {
-  margin: 0;
-  color: #606266;
-  font-size: 15px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-}
-
-.modal-footer {
-  padding: 16px 20px;
-  border-top: 1px solid #ebeef5;
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-}
+/* 自定义确认弹窗 */
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 9999; }
+.modal-container { background: #fff; border-radius: 8px; width: 90%; max-width: 450px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); overflow: hidden; animation: modal-fade-in 0.3s ease-out; }
+.modal-header { padding: 16px 20px; background: #fef0f0; border-bottom: 1px solid #fde2e2; }
+.modal-header h3 { margin: 0; color: #f56c6c; font-size: 18px; }
+.modal-body { padding: 24px 20px; }
+.modal-message { margin: 0; color: #606266; font-size: 15px; line-height: 1.6; white-space: pre-wrap; }
+.modal-footer { padding: 16px 20px; border-top: 1px solid #ebeef5; display: flex; justify-content: flex-end; gap: 12px; }
 
 @keyframes modal-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 </style>

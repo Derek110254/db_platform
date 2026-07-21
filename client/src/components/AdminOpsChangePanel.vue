@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { showToast, showConfirm } from '../utils/toast'
 
 interface OpsChangeItem {
   id: number
@@ -246,7 +247,7 @@ const doConfirm = async () => {
       }
     }
 
-    message.value = '操作成功'
+    showToast('操作成功', 'success')
     confirmDialogVisible.value = false
     await loadRecords()
   } catch (err) {
@@ -295,7 +296,8 @@ const createRecord = async () => {
       return
     }
 
-    message.value = data.message || '创建记录成功'
+    message.value = ''
+    showToast(data.message || '创建记录成功', 'success')
     backToList()
   } catch (err) {
     console.error(err)
@@ -343,7 +345,8 @@ const updateRecord = async () => {
       return
     }
 
-    message.value = data.message || '更新记录成功'
+    message.value = ''
+    showToast(data.message || '更新记录成功', 'success')
     backToList()
   } catch (err) {
     console.error(err)
@@ -354,7 +357,7 @@ const updateRecord = async () => {
 }
 
 const deleteRecord = async (item: OpsChangeItem) => {
-  const ok = window.confirm(`确定要删除记录【${item.changeTitle}】吗？`)
+  const ok = await showConfirm(`确定要删除记录【${item.changeTitle}】吗？`)
   if (!ok) return
 
   loading.value = true
@@ -374,7 +377,7 @@ const deleteRecord = async (item: OpsChangeItem) => {
       return
     }
 
-    message.value = data.message || '删除记录成功'
+    showToast(data.message || '删除记录成功', 'success')
     await loadRecords()
   } catch (err) {
     console.error(err)
@@ -654,56 +657,25 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* 组件特有样式（公共样式见 global.css） */
 .admin-page { width: 100%; }
-.card { width: 100%; border: 1px solid #ddd; border-radius: 10px; padding: 24px; margin-bottom: 24px; background: #fff; }
-h2 { margin-top: 0; color: #2c3e50; }
-.result { margin-bottom: 12px; font-size: 15px; color: #f56c6c; }
-.form-grid { display: grid; grid-template-columns: repeat(3, minmax(200px, 1fr)); gap: 16px; margin-bottom: 16px; }
-.form-item { display: flex; flex-direction: column; gap: 8px; }
-.form-item-full { grid-column: 1 / -1; }
-.form-item label { font-size: 14px; color: #333; }
-input, select, textarea { width: 100%; padding: 10px 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 6px; background: #fff; font-family: Consolas, Monaco, monospace; resize: vertical; }
-input:disabled, select:disabled, textarea:disabled { background: #f5f7fa; color: #606266; cursor: not-allowed; }
-.btn-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
 .inline-message { color: #f56c6c; font-size: 14px; margin-left: 8px; }
-.action-btn { padding: 10px 20px; font-size: 16px; cursor: pointer; border: none; border-radius: 6px; color: #fff; }
-.primary-btn { background: #409eff; }
-.secondary-btn { background: #909399; }
-.warning-btn { background: #e6a23c; }
-.table-wrap { width: 100%; overflow-x: hidden; }
-.result-table { width: 100%; max-width: 100%; border-collapse: collapse; background: #fff; table-layout: fixed; box-sizing: border-box; }
-.result-table th, .result-table td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; word-break: break-all; overflow-wrap: break-word; }
-.result-table th { background: #f5f7fa; white-space: nowrap; }
-.cell-wrap { white-space: normal; }
-.level-tag { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 13px; color: #fff; }
+
+/* 等级/结果标签颜色 */
 .level-常规 { background: #909399; }
 .level-重要 { background: #e6a23c; }
 .level-紧急 { background: #f56c6c; }
-.result-tag { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 13px; color: #fff; }
 .result-成功 { background: #67c23a; }
 .result-失败 { background: #f56c6c; }
 .result-部分成功 { background: #e6a23c; }
 .rollback-sub { font-size: 12px; color: #909399; }
-.row-btns { display: flex; gap: 6px; flex-wrap: nowrap; white-space: nowrap; }
-.mini-btn { padding: 6px 12px; font-size: 14px; border: none; border-radius: 6px; cursor: pointer; color: #fff; line-height: 1.4; }
+
+/* 按钮 */
 .view-btn { background: #909399; }
 .confirm-btn { background: #67c23a; }
 .rollback-btn { background: #e6a23c; }
 .delete-btn { background: #f56c6c; }
 .done-text { font-size: 13px; color: #c0c4cc; }
-.danger-btn { background: #f56c6c; }
-.pagination { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 20px; }
-.page-info { font-size: 14px; }
-.table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
-.table-header h2 { margin-bottom: 0; }
-.header-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.filter-select { width: 160px; padding: 6px 12px; border-radius: 6px; border: 1px solid #ccc; }
-.form-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.back-btn { white-space: nowrap; }
-.empty-text { text-align: center; color: #999; padding: 24px; }
-.required { color: #f56c6c; font-weight: bold; font-size: 16px; }
-.data-row { cursor: pointer; }
-.data-row:hover { background: #f5f7fa; }
 
 /* 确认弹窗 */
 .confirm-overlay { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; }

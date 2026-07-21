@@ -138,118 +138,25 @@ defineExpose({
 </template>
 
 <style scoped>
-.login-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 3000;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(2px);
-}
+/* 组件特有样式（公共样式见 global.css） */
 
-.login-dialog {
-  width: 420px;
-  max-width: calc(100vw - 32px);
-  background: #fff;
-  border-radius: 12px;
-  padding: 30px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
-  position: relative;
-}
+/* 弹窗 */
+.login-mask { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
+.login-dialog { width: 420px; max-width: calc(100vw - 32px); background: #fff; border-radius: 12px; padding: 30px; box-shadow: 0 16px 48px rgba(0,0,0,0.25); position: relative; }
+.close-icon-btn { position: absolute; top: 16px; right: 16px; background: transparent; border: none; font-size: 24px; line-height: 1; color: #909399; cursor: pointer; transition: color 0.2s; padding: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; }
+.close-icon-btn:hover { color: #f56c6c; }
+.login-dialog h2 { margin-top: 0; color: #2c3e50; margin-bottom: 10px; }
 
-.close-icon-btn {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  background: transparent;
-  border: none;
-  font-size: 24px;
-  line-height: 1;
-  color: #909399;
-  cursor: pointer;
-  transition: color 0.2s;
-  padding: 0;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
+/* 表单 */
+.login-form-item { margin-bottom: 16px; }
+.login-form-item label { display: block; margin-bottom: 8px; color: #333; font-weight: 500; }
+.login-input { transition: border-color 0.2s; }
+.login-message { margin: 10px 0 14px; color: #f56c6c; font-size: 14px; }
 
-.close-icon-btn:hover {
-  color: #f56c6c;
-}
-
-.login-dialog h2 {
-  margin-top: 0;
-  color: #2c3e50;
-  margin-bottom: 10px;
-}
-
-.login-form-item {
-  margin-bottom: 16px;
-}
-
-.login-form-item label {
-  display: block;
-  margin-bottom: 8px;
-  color: #333;
-  font-weight: 500;
-}
-
-.login-input {
-  width: 100%;
-  padding: 10px 12px;
-  font-family: Consolas, Monaco, monospace;
-  font-size: 16px;
-  border: 1px solid #dcdfe6;
-  border-radius: 6px;
-  background: #fff;
-  transition: border-color 0.2s;
-}
-
-.login-input:focus {
-  outline: none;
-  border-color: #409eff;
-}
-
-.login-message {
-  margin: 10px 0 14px;
-  color: #f56c6c;
-  font-size: 14px;
-}
-
-.login-btn-row {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-  margin-top: 20px;
-}
-
-.action-btn {
-  padding: 12px 30px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  border: none;
-  border-radius: 6px;
-  color: #fff;
-  width: 100%;
-}
-
-.primary-btn {
-  background: #409eff;
-  transition: background 0.2s;
-}
-.primary-btn:hover {
-  background: #66b1ff;
-}
-.secondary-btn {
-  background: #909399;
-}
-.secondary-btn:hover {
-  background: #a6a9ad;
-}
+/* 按钮 */
+.login-btn-row { display: flex; gap: 12px; justify-content: center; margin-top: 20px; }
+.action-btn { font-weight: 600; width: 100%; }
+.primary-btn { transition: background 0.2s; }
+.primary-btn:hover { background: #66b1ff; }
+.secondary-btn:hover { background: #a6a9ad; }
 </style>
