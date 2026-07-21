@@ -418,7 +418,7 @@ func RegisterAPIRoutes(r *gin.Engine) {
 	{
 		// 基础测试接口
 		api.GET("/hello", helloHandler)
-		api.GET("/dashboard", dashboardHandler) // 首屏看板统计数据
+		api.GET("/dashboard", dashboardHandler) // 首屏看板（白名单）
 
 		// 语法检测接口（不需要登录）
 		api.POST("/check-sql", checkSQLHandler) // 检测查询 SQL 的语法及风险
@@ -434,6 +434,9 @@ func RegisterAPIRoutes(r *gin.Engine) {
 		queryGroup := api.Group("/")
 		queryGroup.Use(middleware.RequireLogin())
 		{
+			// 看板（需登录）
+			queryGroup.GET("/dashboard/yearly", yearlyDashboardHandler) // 今年工作量统计
+
 			// 个人基础操作
 			queryGroup.POST("/user/change-password", changePasswordHandler) // 用户修改个人密码
 
@@ -544,60 +547,18 @@ func helloHandler(c *gin.Context) {
 }
 
 func dashboardHandler(c *gin.Context) {
-	db, err := config.GetPlatformDB()
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"ok": false, "message": "数据库连接失败"})
+	result := appsql.GetDashboardOverview()
+	c.JSON(http.StatusOK, result)
+}
+
+func yearlyDashboardHandler(c *gin.Context) {
+	_, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
 		return
 	}
-
-	stats := gin.H{"ok": true}
-
-	// 用户数
-	var userCount int
-	db.QueryRow("SELECT COUNT(1) FROM platform_user WHERE is_deleted = 0").Scan(&userCount)
-	stats["userCount"] = userCount
-
-	// 连接数
-	var connCount int
-	db.QueryRow("SELECT COUNT(1) FROM platform_db_connection WHERE is_enabled = 1").Scan(&connCount)
-	stats["connCount"] = connCount
-
-	// 今日 SQL 检测数
-	var todayAudit int
-	db.QueryRow("SELECT COUNT(1) FROM platform_sql_audit WHERE DATE(create_time) = CURDATE()").Scan(&todayAudit)
-	stats["todayAudit"] = todayAudit
-
-	// 待审核 SQL 数
-	var pendingAudit int
-	db.QueryRow("SELECT COUNT(1) FROM platform_sql_audit WHERE submit_audit > 0 AND audit_passed = 0").Scan(&pendingAudit)
-	stats["pendingAudit"] = pendingAudit
-
-	// 变更申请数
-	var changeReqCount int
-	db.QueryRow("SELECT COUNT(1) FROM platform_db_change_request").Scan(&changeReqCount)
-	stats["changeReqCount"] = changeReqCount
-
-	// 待验证变更数
-	var pendingVerifyChange int
-	db.QueryRow("SELECT COUNT(1) FROM platform_db_change_request WHERE release_verifier = '' OR release_verifier IS NULL").Scan(&pendingVerifyChange)
-	stats["pendingVerifyChange"] = pendingVerifyChange
-
-	// 告警记录数
-	var alertCount int
-	db.QueryRow("SELECT COUNT(1) FROM platform_db_alert_handle").Scan(&alertCount)
-	stats["alertCount"] = alertCount
-
-	// 运维变更记录数
-	var opsChangeCount int
-	db.QueryRow("SELECT COUNT(1) FROM platform_ops_change_record").Scan(&opsChangeCount)
-	stats["opsChangeCount"] = opsChangeCount
-
-	// 待复核运维变更数
-	var pendingReviewOps int
-	db.QueryRow("SELECT COUNT(1) FROM platform_ops_change_record WHERE change_result = '待复核'").Scan(&pendingReviewOps)
-	stats["pendingReviewOps"] = pendingReviewOps
-
-	c.JSON(http.StatusOK, stats)
+	result := appsql.GetYearlyDashboard()
+	c.JSON(http.StatusOK, result)
 }
 
 func ssoConfigHandler(c *gin.Context) {

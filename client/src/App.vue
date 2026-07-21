@@ -35,6 +35,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AdminConnectionPanel from './components/AdminConnectionPanel.vue'
 import { useToasts, useConfirm, resolveConfirm } from './utils/toast'
+import DashboardPanel from './components/DashboardPanel.vue'
 import AdminUserPanel from './components/AdminUserPanel.vue'
 import AdminAuditPanel from './components/AdminAuditPanel.vue'
 import HomePanel from './components/HomePanel.vue'
@@ -62,7 +63,7 @@ type DBType = 'mysql' | 'oracle'
 /**
  * 页面类型
  */
-type PageType = 'home' | 'query' | 'query-plan' | 'audit-history' | 'admin-users' | 'admin-connections' | 'admin-audits' | 'db-change-requests' | 'db-data-sync-requests' | 'admin-db-change-release' | 'admin-db-data-sync-requests' | 'admin-team-db-envs' | 'admin-db-alert-handles' | 'admin-ops-change-records'
+type PageType = 'home' | 'dashboard' | 'query' | 'query-plan' | 'audit-history' | 'admin-users' | 'admin-connections' | 'admin-audits' | 'db-change-requests' | 'db-data-sync-requests' | 'admin-db-change-release' | 'admin-db-data-sync-requests' | 'admin-team-db-envs' | 'admin-db-alert-handles' | 'admin-ops-change-records'
 
 /**
  * 当前登录用户信息
@@ -138,6 +139,7 @@ const HISTORY_STORAGE_KEY = 'db_query_history_v1'
  */
 const resolvePageByPath = (): PageType => {
   const path = window.location.pathname
+  if (path === '/dashboard') return 'dashboard'
   if (path === '/query') return 'query'
   if (path === '/query-plan') return 'query-plan'
   if (path === '/audit-history') return 'audit-history'
@@ -161,6 +163,7 @@ const currentPage = ref<PageType>(resolvePageByPath())
  */
 const pageTitles: Record<string, string> = {
   'home': 'SQL 自查工具',
+  'dashboard': '工作看板',
   'query': '数据库查询',
   'query-plan': 'SQL 性能检测',
   'audit-history': '审核历史',
@@ -484,6 +487,7 @@ watch(
  * 根据页面类型生成浏览器路径
  */
 const getPathByPage = (page: PageType): string => {
+  if (page === 'dashboard') return '/dashboard'
   if (page === 'query') return '/query'
   if (page === 'query-plan') return '/query-plan'
   if (page === 'audit-history') return '/audit-history'
@@ -591,6 +595,18 @@ onMounted(async () => {
   }
 
   await checkAuthStatus(false)
+
+  // 已登录且访问首页时，自动跳转到工作看板
+  if (isAuthenticated.value && (currentPage.value === 'home')) {
+    currentPage.value = 'dashboard'
+    window.history.replaceState({}, '', '/dashboard')
+  }
+
+  // 未登录时访问看板，跳回 SQL 自查工具
+  if (!isAuthenticated.value && currentPage.value === 'dashboard') {
+    currentPage.value = 'home'
+    window.history.replaceState({}, '', '/')
+  }
 
   if (currentPage.value === 'query' || currentPage.value === 'query-plan') {
     const ok = await checkAuthStatus(false)
@@ -725,21 +741,8 @@ const submitLogin = async () => {
     loginMessage.value = ''
 
     if (currentUser.value?.needChangePwd !== 1) {
-      if (hasQueryDataPermission.value) {
-        currentPage.value = 'query'
-        window.history.pushState({}, '', '/query')
-        await loadQueryConnections()
-        loadQueryHistory()
-        if (selectedConnectionName.value) {
-          await loadQueryMetadata()
-        }
-      } else if (hasQueryPlanPermission.value) {
-        currentPage.value = 'query-plan'
-        window.history.pushState({}, '', '/query-plan')
-      } else {
-        currentPage.value = 'home'
-        window.history.pushState({}, '', '/')
-      }
+      currentPage.value = 'dashboard'
+      window.history.pushState({}, '', '/dashboard')
     }
   } catch (err) {
     console.error(err)
@@ -758,13 +761,7 @@ const handleSsoSuccess = async () => {
   loginMessage.value = ''
 
   if (currentUser.value?.needChangePwd !== 1) {
-    if (hasQueryDataPermission.value) {
-      navigateTo('query')
-    } else if (hasQueryPlanPermission.value) {
-      navigateTo('query-plan')
-    } else {
-      navigateTo('home')
-    }
+    navigateTo('dashboard')
   }
 }
 
@@ -1399,6 +1396,9 @@ const scrollToTop = () => {
 
       <nav class="sidebar-nav">
         <div class="nav-group-label" v-if="!sidebarCollapsed">主要功能</div>
+        <button v-if="isAuthenticated" :class="['nav-item', currentPage === 'dashboard' ? 'active' : '']" @click="navigateTo('dashboard')" type="button" :title="sidebarCollapsed ? '工作看板' : ''">
+          <span class="nav-icon">📈</span><span v-if="!sidebarCollapsed">工作看板</span>
+        </button>
         <button :class="['nav-item', currentPage === 'home' ? 'active' : '']" @click="navigateTo('home')" type="button" :title="sidebarCollapsed ? 'SQL 自查工具' : ''">
           <span class="nav-icon">🔍</span><span v-if="!sidebarCollapsed">SQL 自查工具</span>
         </button>
@@ -1487,6 +1487,11 @@ const scrollToTop = () => {
       <!-- 首页 -->
       <div v-if="currentPage === 'home'" key="home">
         <HomePanel />
+      </div>
+
+      <!-- 工作看板（登录后） -->
+      <div v-else-if="currentPage === 'dashboard'" key="dashboard">
+        <DashboardPanel />
       </div>
 
       <!-- 查询页 -->
