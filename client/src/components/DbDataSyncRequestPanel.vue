@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { showToast, showConfirm } from '../utils/toast'
 
 const formatDate = (dateStr: string) => {
   if (!dateStr) return '-'
@@ -297,7 +298,8 @@ const saveRequest = async () => {
 }
 
 const deleteRequest = async (id: number) => {
-  if (!confirm('确定要删除该申请吗？')) return
+  const ok = await showConfirm('确定要删除该申请吗？')
+  if (!ok) return
   
   try {
     const res = await fetch('/api/db-data-sync-requests', {

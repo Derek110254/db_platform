@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { showToast, showConfirm } from '../utils/toast'
 
 const formatDate = (dateStr: string) => {
   if (!dateStr) return '-'
@@ -402,7 +403,8 @@ const saveRequest = async () => {
 }
 
 const deleteRequest = async (id: number) => {
-  if (!confirm('确定要删除该申请吗？')) return
+  const ok = await showConfirm('确定要删除该申请吗？')
+  if (!ok) return
   
   try {
     const res = await fetch('/api/db-change-requests', {
@@ -424,7 +426,8 @@ const deleteRequest = async (id: number) => {
 }
 
 const verifyRequest = async (id: number) => {
-  if (!confirm('确认该变更申请的发布结果正常？\n验证后该申请将彻底完结，不可再修改。')) return
+  const ok = await showConfirm('确认该变更申请的发布结果正常？\n验证后该申请将彻底完结，不可再修改。')
+  if (!ok) return
 
   try {
     const res = await fetch('/api/db-change-requests/verify', {

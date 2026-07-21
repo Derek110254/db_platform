@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { showToast, showConfirm } from '../utils/toast'
 
 interface TeamDbEnvItem {
   id: number
@@ -144,7 +145,8 @@ const createRecord = async () => {
       return
     }
 
-    message.value = data.message || '创建配置成功'
+    message.value = ''
+    showToast(data.message || '创建配置成功', 'success')
     backToList()
   } catch (err) {
     console.error(err)
@@ -180,7 +182,8 @@ const updateRecord = async () => {
       return
     }
 
-    message.value = data.message || '更新配置成功'
+    message.value = ''
+    showToast(data.message || '更新配置成功', 'success')
     backToList()
   } catch (err) {
     console.error(err)
@@ -202,7 +205,7 @@ const cloneRecord = (item: TeamDbEnvItem) => {
 }
 
 const deleteRecord = async (item: TeamDbEnvItem) => {
-  const ok = window.confirm(`确定要删除配置【${item.teamName} - ${item.envName}】吗？`)
+  const ok = await showConfirm(`确定要删除配置【${item.teamName} - ${item.envName}】吗？`)
   if (!ok) return
 
   loading.value = true
@@ -222,7 +225,7 @@ const deleteRecord = async (item: TeamDbEnvItem) => {
       return
     }
 
-    message.value = data.message || '删除配置成功'
+    showToast(data.message || '删除配置成功', 'success')
 
     if (isEditMode.value && form.value.id === item.id) {
       resetForm()

@@ -1482,14 +1482,15 @@ const scrollToTop = () => {
 
       <!-- 内容区 -->
       <div class="content-area">
+        <transition name="page-fade" mode="out-in">
 
       <!-- 首页 -->
-      <template v-if="currentPage === 'home'">
+      <div v-if="currentPage === 'home'" key="home">
         <HomePanel />
-      </template>
+      </div>
 
       <!-- 查询页 -->
-      <template v-else-if="currentPage === 'query'">
+      <div v-else-if="currentPage === 'query'" key="query">
         <div class="query-main-grid">
           <!-- 左侧元数据 -->
           <MetadataPanel
@@ -1582,10 +1583,10 @@ const scrollToTop = () => {
 
           <div v-else class="query-result-empty"></div>
         </div>
-      </template>
+      </div>
 
       <!-- SQL 性能检测页 -->
-      <template v-else-if="currentPage === 'query-plan'">
+      <div v-else-if="currentPage === 'query-plan'" key="query-plan">
         <div class="query-main-grid">
           <!-- 左侧元数据 -->
           <MetadataPanel
@@ -1634,62 +1635,63 @@ const scrollToTop = () => {
 
         <!-- 执行计划结果的 Teleport 挂载点 -->
         <div id="plan-result-teleport-target"></div>
-      </template>
+      </div>
 
       <!-- SQL AI 审核历史页 -->
-      <template v-else-if="currentPage === 'audit-history'">
+      <div v-else-if="currentPage === 'audit-history'" key="audit-history">
         <AuditHistoryPanel />
-      </template>
+      </div>
 
       <!-- 数据库变更申请页 -->
-      <template v-else-if="currentPage === 'db-change-requests'">
+      <div v-else-if="currentPage === 'db-change-requests'" key="db-change-requests">
         <DbChangeRequestPanel />
-      </template>
+      </div>
 
       <!-- 数据库数据同步申请页 -->
-      <template v-else-if="currentPage === 'db-data-sync-requests'">
+      <div v-else-if="currentPage === 'db-data-sync-requests'" key="db-data-sync-requests">
         <DbDataSyncRequestPanel />
-      </template>
+      </div>
 
       <!-- 管理员页面：用户管理 -->
-      <template v-else-if="currentPage === 'admin-users'">
+      <div v-else-if="currentPage === 'admin-users'" key="admin-users">
         <AdminUserPanel />
-      </template>
+      </div>
 
       <!-- 管理员页面：数据库管理 -->
-      <template v-else-if="currentPage === 'admin-connections'">
+      <div v-else-if="currentPage === 'admin-connections'" key="admin-connections">
         <AdminConnectionPanel />
-      </template>
+      </div>
 
       <!-- 管理员页面：SQL 审核管理 -->
-      <template v-else-if="currentPage === 'admin-audits'">
+      <div v-else-if="currentPage === 'admin-audits'" key="admin-audits">
         <AdminAuditPanel />
-      </template>
+      </div>
 
       <!-- 管理员页面：数据库变更 -->
-      <template v-else-if="currentPage === 'admin-db-change-release'">
+      <div v-else-if="currentPage === 'admin-db-change-release'" key="admin-db-change-release">
         <AdminDbChangeReleasePanel />
-      </template>
+      </div>
 
       <!-- 管理员页面：数据同步管理 -->
-      <template v-else-if="currentPage === 'admin-db-data-sync-requests'">
+      <div v-else-if="currentPage === 'admin-db-data-sync-requests'" key="admin-db-data-sync-requests">
         <AdminDbDataSyncRequestPanel />
-      </template>
+      </div>
 
       <!-- 管理员页面：团队数据库环境 -->
-      <template v-else-if="currentPage === 'admin-team-db-envs'">
+      <div v-else-if="currentPage === 'admin-team-db-envs'" key="admin-team-db-envs">
         <AdminTeamDbEnvPanel />
-      </template>
+      </div>
 
       <!-- 管理员页面：数据库告警处理 -->
-      <template v-else-if="currentPage === 'admin-db-alert-handles'">
+      <div v-else-if="currentPage === 'admin-db-alert-handles'" key="admin-db-alert-handles">
         <AdminDbAlertHandlePanel />
-      </template>
+      </div>
 
       <!-- 管理员页面：运维变更记录 -->
-      <template v-else-if="currentPage === 'admin-ops-change-records'">
+      <div v-else-if="currentPage === 'admin-ops-change-records'" key="admin-ops-change-records">
         <AdminOpsChangePanel />
-      </template>
+      </div>
+        </transition>
       </div><!-- content-area -->
     </div><!-- main-area -->
 
@@ -1964,152 +1966,19 @@ const scrollToTop = () => {
   overflow-y: auto;
 }
 
-.header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  flex-wrap: wrap;
+/* 页面切换过渡动画 */
+.page-fade-enter-active {
+  transition: opacity 0.2s ease;
+}
+.page-fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.page-fade-enter-from,
+.page-fade-leave-to {
+  opacity: 0;
 }
 
-.header-main {
-  flex: 1;
-  min-width: 320px;
-}
-
-.header-auth {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.user-dropdown {
-  position: relative;
-  display: inline-block;
-  cursor: pointer;
-  padding-bottom: 8px; /* enlarge hover area */
-}
-
-.user-dropdown-menu {
-  display: none;
-  position: absolute;
-  right: 0;
-  top: 100%;
-  background: #fff;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  border-radius: 6px;
-  min-width: 120px;
-  z-index: 1000;
-  overflow: hidden;
-  padding: 4px 0;
-}
-
-.user-dropdown:hover .user-dropdown-menu {
-  display: block;
-}
-
-.user-dropdown-item {
-  display: block;
-  width: 100%;
-  padding: 10px 16px;
-  color: #333;
-  font-size: 14px;
-  background: transparent;
-  border: none;
-  text-align: center;
-  cursor: pointer;
-  transition: background 0.2s;
-  white-space: nowrap;
-}
-
-.user-dropdown-item:hover {
-  background: #f5f7fa;
-}
-
-.logout-text {
-  color: #f56c6c;
-}
-
-.dropdown-icon {
-  font-size: 10px;
-  margin-left: 2px;
-  color: #909399;
-}
-
-.user-info {
-  text-align: right;
-}
-
-.user-name {
-  font-size: 15px;
-  font-weight: 700;
-  color: #2c3e50;
-}
-
-.user-sub {
-  font-size: 12px;
-  color: #909399;
-}
-
-.auth-btn {
-  padding: 10px 18px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  color: #fff;
-}
-
-.login-btn {
-  background: #409eff;
-}
-
-.logout-btn {
-  background: #f56c6c;
-}
-
-h1 {
-  text-align: center;
-  margin: 0 0 12px;
-  color: #2c3e50;
-}
-
-h2 {
-  margin-top: 0;
-  color: #2c3e50;
-}
-
-.platform-desc {
-  margin: 0 auto 24px;
-  max-width: 900px;
-  text-align: center;
-  font-size: 15px;
-  line-height: 1.8;
-  color: #666;
-}
-
-.top-nav-row {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-}
-
-.nav-btn {
-  padding: 10px 20px;
-  font-size: 16px;
-  cursor: pointer;
-  border: none;
-  border-radius: 6px;
-  background: #eef2ff;
-  color: #333;
-}
-
-.nav-btn.active {
-  background: #409eff;
-  color: #fff;
-}
-
+/* 查询页三栏布局 */
 .query-main-grid {
   display: grid;
   grid-template-columns: 320px minmax(860px, 1fr) 260px;
@@ -2118,29 +1987,14 @@ h2 {
   margin-bottom: 16px;
 }
 
-.card {
-  width: 100%;
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  padding: 24px;
-  margin-bottom: 24px;
-  background: #fff;
-}
-
+/* 查询结果 */
 .query-result-card {
   width: 100%;
   margin-bottom: 24px;
 }
-
 .query-result-empty {
   min-height: 160px;
 }
-
-.result {
-  margin-bottom: 12px;
-  font-size: 15px;
-}
-
 .query-toolbar {
   display: flex;
   justify-content: space-between;
@@ -2149,7 +2003,6 @@ h2 {
   margin-bottom: 16px;
   flex-wrap: wrap;
 }
-
 .query-toolbar-left,
 .query-toolbar-right {
   display: flex;
@@ -2157,14 +2010,12 @@ h2 {
   gap: 10px;
   flex-wrap: wrap;
 }
-
 .page-size-select {
   width: auto;
   min-width: 80px;
   padding: 6px 10px;
   font-size: 14px;
 }
-
 .pager-btn {
   padding: 8px 14px;
   font-size: 14px;
@@ -2174,35 +2025,12 @@ h2 {
   background: #409eff;
   color: #fff;
 }
-
 .pager-btn:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
 
-.table-wrap {
-  width: 100%;
-  overflow-x: auto;
-}
-
-.result-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: #fff;
-}
-
-.result-table th,
-.result-table td {
-  border: 1px solid #ddd;
-  padding: 10px;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.result-table th {
-  background: #f5f7fa;
-}
-
+/* 回到顶部 */
 .back-top-btn {
   position: fixed;
   right: 24px;

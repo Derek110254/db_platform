@@ -15,6 +15,7 @@
  */
 
 import { computed, onMounted, ref } from 'vue'
+import { showToast, showConfirm } from '../utils/toast'
 
 interface AdminUserItem {
   id: number
@@ -205,7 +206,8 @@ const createUser = async () => {
       return
     }
 
-    message.value = data.message || '创建用户成功'
+    message.value = ''
+    showToast(data.message || '创建用户成功', 'success')
     backToList()
   } catch (err) {
     console.error(err)
@@ -266,7 +268,8 @@ const updateUser = async () => {
       return
     }
 
-    message.value = data.message || '编辑用户成功'
+    message.value = ''
+    showToast(data.message || '编辑用户成功', 'success')
     backToList()
   } catch (err) {
     console.error(err)
@@ -277,7 +280,7 @@ const updateUser = async () => {
 }
 
 const deleteUser = async (item: AdminUserItem) => {
-  const ok = window.confirm(`确定要删除用户【${item.username}】吗？`)
+  const ok = await showConfirm(`确定要删除用户【${item.username}】吗？`)
   if (!ok) return
 
   loading.value = true
@@ -299,7 +302,7 @@ const deleteUser = async (item: AdminUserItem) => {
       return
     }
 
-    message.value = data.message || '删除用户成功'
+    showToast(data.message || '删除用户成功', 'success')
     await loadUsers()
   } catch (err) {
     console.error(err)

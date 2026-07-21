@@ -19,6 +19,7 @@
  */
 
 import { computed, onMounted, ref, watch } from 'vue'
+import { showToast, showConfirm } from '../utils/toast'
 
 type DBType = 'mysql' | 'oracle'
 
@@ -213,7 +214,8 @@ const createFavorite = async () => {
       return
     }
 
-    message.value = data.message || 'SQL 收藏成功'
+    message.value = ''
+    showToast(data.message || 'SQL 收藏成功', 'success')
     emit('message', message.value)
     resetFavoriteForm()
     await loadFavorites()
@@ -274,7 +276,8 @@ const updateFavorite = async () => {
       return
     }
 
-    message.value = data.message || '更新 SQL 收藏成功'
+    message.value = ''
+    showToast(data.message || '更新 SQL 收藏成功', 'success')
     emit('message', message.value)
     resetFavoriteForm()
     await loadFavorites()
@@ -291,7 +294,7 @@ const updateFavorite = async () => {
  * 删除收藏
  */
 const deleteFavorite = async (item: SQLFavoriteItem) => {
-  const ok = window.confirm(`确定要删除收藏【${item.favoriteName}】吗？`)
+  const ok = await showConfirm(`确定要删除收藏【${item.favoriteName}】吗？`)
   if (!ok) return
 
   loading.value = true
@@ -312,7 +315,7 @@ const deleteFavorite = async (item: SQLFavoriteItem) => {
       return
     }
 
-    message.value = data.message || '删除 SQL 收藏成功'
+    showToast(data.message || '删除 SQL 收藏成功', 'success')
     emit('message', message.value)
 
     if (isEditMode.value && favoriteForm.value.id === item.id) {
