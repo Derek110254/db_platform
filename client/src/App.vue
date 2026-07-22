@@ -36,6 +36,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AdminConnectionPanel from './components/AdminConnectionPanel.vue'
 import { useToasts, useConfirm, resolveConfirm } from './utils/toast'
 import DashboardPanel from './components/DashboardPanel.vue'
+import PersonalDashboardPanel from './components/PersonalDashboardPanel.vue'
 import AdminUserPanel from './components/AdminUserPanel.vue'
 import AdminAuditPanel from './components/AdminAuditPanel.vue'
 import HomePanel from './components/HomePanel.vue'
@@ -63,7 +64,7 @@ type DBType = 'mysql' | 'oracle'
 /**
  * 页面类型
  */
-type PageType = 'home' | 'dashboard' | 'query' | 'query-plan' | 'audit-history' | 'admin-users' | 'admin-connections' | 'admin-audits' | 'db-change-requests' | 'db-data-sync-requests' | 'admin-db-change-release' | 'admin-db-data-sync-requests' | 'admin-team-db-envs' | 'admin-db-alert-handles' | 'admin-ops-change-records'
+type PageType = 'home' | 'dashboard' | 'personal-dashboard' | 'query' | 'query-plan' | 'audit-history' | 'admin-users' | 'admin-connections' | 'admin-audits' | 'db-change-requests' | 'db-data-sync-requests' | 'admin-db-change-release' | 'admin-db-data-sync-requests' | 'admin-team-db-envs' | 'admin-db-alert-handles' | 'admin-ops-change-records'
 
 /**
  * 当前登录用户信息
@@ -140,6 +141,7 @@ const HISTORY_STORAGE_KEY = 'db_query_history_v1'
 const resolvePageByPath = (): PageType => {
   const path = window.location.pathname
   if (path === '/dashboard') return 'dashboard'
+  if (path === '/personal-dashboard') return 'personal-dashboard'
   if (path === '/query') return 'query'
   if (path === '/query-plan') return 'query-plan'
   if (path === '/audit-history') return 'audit-history'
@@ -164,6 +166,7 @@ const currentPage = ref<PageType>(resolvePageByPath())
 const pageTitles: Record<string, string> = {
   'home': 'SQL 自查工具',
   'dashboard': '工作看板',
+  'personal-dashboard': '个人看板',
   'query': '数据库查询',
   'query-plan': 'SQL 性能检测',
   'audit-history': '审核历史',
@@ -180,6 +183,26 @@ const pageTitles: Record<string, string> = {
 }
 const breadcrumbTitle = computed(() => pageTitles[currentPage.value] || '首页')
 const sidebarCollapsed = ref(false)
+
+// 个人看板待办数（用于侧边栏数字提醒）
+const personalPendingCount = ref(0)
+const loadPersonalPending = async () => {
+  if (!isAuthenticated.value) return
+  try {
+    const res = await fetch('/api/dashboard/personal', { credentials: 'include' })
+    const data = await res.json()
+    if (data.ok) {
+      personalPendingCount.value =
+        (data.pendingAudit || 0) +
+        (data.pendingChange || 0) +
+        (data.pendingSync || 0) +
+        (data.pendingAlert || 0) +
+        (data.pendingOpsReview || 0)
+    }
+  } catch {
+    // 静默失败
+  }
+}
 const toggleSidebar = () => { sidebarCollapsed.value = !sidebarCollapsed.value }
 
 /**
@@ -488,6 +511,7 @@ watch(
  */
 const getPathByPage = (page: PageType): string => {
   if (page === 'dashboard') return '/dashboard'
+  if (page === 'personal-dashboard') return '/personal-dashboard'
   if (page === 'query') return '/query'
   if (page === 'query-plan') return '/query-plan'
   if (page === 'audit-history') return '/audit-history'
@@ -517,7 +541,7 @@ const navigateTo = async (page: PageType) => {
     }
   }
 
-  if (page === 'admin-users' || page === 'admin-connections' || page === 'admin-audits' || page === 'admin-db-change-release' || page === 'admin-team-db-envs' || page === 'admin-db-alert-handles' || page === 'admin-ops-change-records') {
+  if (page === 'admin-users' || page === 'admin-connections' || page === 'admin-audits' || page === 'admin-db-change-release' || page === 'admin-team-db-envs' || page === 'admin-db-alert-handles' || page === 'admin-ops-change-records' || page === 'personal-dashboard') {
     const ok = await checkAuthStatus(false)
     if (!ok) {
       loginDialogVisible.value = true
@@ -567,7 +591,7 @@ const handlePopState = async () => {
     }
   }
 
-  if (targetPage === 'admin-users' || targetPage === 'admin-connections' || targetPage === 'admin-audits' || targetPage === 'admin-db-change-release' || targetPage === 'admin-team-db-envs' || targetPage === 'admin-db-alert-handles' || targetPage === 'admin-ops-change-records') {
+  if (targetPage === 'admin-users' || targetPage === 'admin-connections' || targetPage === 'admin-audits' || targetPage === 'admin-db-change-release' || targetPage === 'admin-team-db-envs' || targetPage === 'admin-db-alert-handles' || targetPage === 'admin-ops-change-records' || targetPage === 'personal-dashboard') {
     const ok = await checkAuthStatus(false)
     if (!ok || !isAdmin.value) {
       currentPage.value = 'home'
@@ -595,6 +619,7 @@ onMounted(async () => {
   }
 
   await checkAuthStatus(false)
+  loadPersonalPending()
 
   // 已登录且访问首页时，自动跳转到工作看板
   if (isAuthenticated.value && (currentPage.value === 'home')) {
@@ -1424,6 +1449,10 @@ const scrollToTop = () => {
 
         <template v-if="isAdmin">
           <div class="nav-group-label" v-if="!sidebarCollapsed">管理功能</div>
+          <button :class="['nav-item', currentPage === 'personal-dashboard' ? 'active' : '']" @click="navigateTo('personal-dashboard')" type="button" :title="sidebarCollapsed ? '个人看板' : ''">
+            <span class="nav-icon">👤</span><span v-if="!sidebarCollapsed">个人看板</span>
+            <span v-if="personalPendingCount > 0" class="nav-badge">{{ personalPendingCount }}</span>
+          </button>
           <button :class="['nav-item', currentPage === 'admin-audits' ? 'active' : '']" @click="navigateTo('admin-audits')" type="button" :title="sidebarCollapsed ? 'SQL 审核管理' : ''">
             <span class="nav-icon">✅</span><span v-if="!sidebarCollapsed">SQL 审核管理</span>
           </button>
@@ -1433,17 +1462,17 @@ const scrollToTop = () => {
           <button :class="['nav-item', currentPage === 'admin-db-data-sync-requests' ? 'active' : '']" @click="navigateTo('admin-db-data-sync-requests')" type="button" :title="sidebarCollapsed ? '数据同步管理' : ''">
             <span class="nav-icon">🔁</span><span v-if="!sidebarCollapsed">数据同步管理</span>
           </button>
-          <button :class="['nav-item', currentPage === 'admin-connections' ? 'active' : '']" @click="navigateTo('admin-connections')" type="button" :title="sidebarCollapsed ? '查询数据库管理' : ''">
-            <span class="nav-icon">🗄</span><span v-if="!sidebarCollapsed">查询数据库管理</span>
-          </button>
-          <button :class="['nav-item', currentPage === 'admin-team-db-envs' ? 'active' : '']" @click="navigateTo('admin-team-db-envs')" type="button" :title="sidebarCollapsed ? '团队数据库环境' : ''">
-            <span class="nav-icon">🌍</span><span v-if="!sidebarCollapsed">团队数据库环境</span>
-          </button>
           <button :class="['nav-item', currentPage === 'admin-db-alert-handles' ? 'active' : '']" @click="navigateTo('admin-db-alert-handles')" type="button" :title="sidebarCollapsed ? '数据库告警处理' : ''">
             <span class="nav-icon">🚨</span><span v-if="!sidebarCollapsed">数据库告警处理</span>
           </button>
           <button :class="['nav-item', currentPage === 'admin-ops-change-records' ? 'active' : '']" @click="navigateTo('admin-ops-change-records')" type="button" :title="sidebarCollapsed ? '运维变更记录' : ''">
             <span class="nav-icon">🔧</span><span v-if="!sidebarCollapsed">运维变更记录</span>
+          </button>
+          <button :class="['nav-item', currentPage === 'admin-connections' ? 'active' : '']" @click="navigateTo('admin-connections')" type="button" :title="sidebarCollapsed ? '查询数据库管理' : ''">
+            <span class="nav-icon">🗄</span><span v-if="!sidebarCollapsed">查询数据库管理</span>
+          </button>
+          <button :class="['nav-item', currentPage === 'admin-team-db-envs' ? 'active' : '']" @click="navigateTo('admin-team-db-envs')" type="button" :title="sidebarCollapsed ? '团队数据库环境' : ''">
+            <span class="nav-icon">🌍</span><span v-if="!sidebarCollapsed">团队数据库环境</span>
           </button>
           <button :class="['nav-item', currentPage === 'admin-users' ? 'active' : '']" @click="navigateTo('admin-users')" type="button" :title="sidebarCollapsed ? '用户管理' : ''">
             <span class="nav-icon">👥</span><span v-if="!sidebarCollapsed">用户管理</span>
@@ -1696,6 +1725,11 @@ const scrollToTop = () => {
       <div v-else-if="currentPage === 'admin-ops-change-records'" key="admin-ops-change-records">
         <AdminOpsChangePanel />
       </div>
+
+      <!-- 管理员页面：个人看板 -->
+      <div v-else-if="currentPage === 'personal-dashboard'" key="personal-dashboard">
+        <PersonalDashboardPanel @navigate="(p: string) => navigateTo(p as any)" />
+      </div>
         </transition>
       </div><!-- content-area -->
     </div><!-- main-area -->
@@ -1855,6 +1889,19 @@ const scrollToTop = () => {
 .nav-item.active {
   background: #3b82f6;
   color: #fff;
+}
+.nav-badge {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: #f56c6c;
+  color: #fff;
+  font-size: 11px;
+  font-weight: bold;
+  text-align: center;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 .nav-icon {
   flex-shrink: 0;

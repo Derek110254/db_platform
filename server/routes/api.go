@@ -435,7 +435,8 @@ func RegisterAPIRoutes(r *gin.Engine) {
 		queryGroup.Use(middleware.RequireLogin())
 		{
 			// 看板（需登录）
-			queryGroup.GET("/dashboard/yearly", yearlyDashboardHandler) // 今年工作量统计
+			queryGroup.GET("/dashboard/yearly", yearlyDashboardHandler)     // 今年工作量统计
+			queryGroup.GET("/dashboard/personal", personalDashboardHandler) // 个人看板
 
 			// 个人基础操作
 			queryGroup.POST("/user/change-password", changePasswordHandler) // 用户修改个人密码
@@ -558,6 +559,25 @@ func yearlyDashboardHandler(c *gin.Context) {
 		return
 	}
 	result := appsql.GetYearlyDashboard()
+	c.JSON(http.StatusOK, result)
+}
+
+func personalDashboardHandler(c *gin.Context) {
+	userID, _, ok := getCurrentUserContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "message": "未登录"})
+		return
+	}
+
+	// 获取当前用户名（优先用 displayName）
+	username := "admin"
+	if displayName, ok := c.Get("currentDisplayName"); ok && displayName.(string) != "" {
+		username = displayName.(string)
+	} else if u, ok := c.Get("currentUsername"); ok && u.(string) != "" {
+		username = u.(string)
+	}
+
+	result := appsql.GetPersonalDashboard(userID, username)
 	c.JSON(http.StatusOK, result)
 }
 
