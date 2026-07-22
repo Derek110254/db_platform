@@ -7,7 +7,7 @@ const formatDate = (dateStr: string) => {
   const d = new Date(dateStr)
   if (isNaN(d.getTime())) return dateStr
   const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 interface DBDataSyncRequest {
@@ -45,11 +45,10 @@ const currentPage = ref(1)
 const pageSize = ref(10)
 const pageSizeOptions = [10, 20, 50, 100]
 
-const dialogVisible = ref(false)
-const dialogLoading = ref(false)
-const dialogTitle = ref('新建数据库数据同步申请')
+const viewMode = ref<'list' | 'view' | 'form'>('list')
+const isEditMode = ref(false)
+const loading = ref(false)
 const message = ref('')
-const isViewMode = ref(false)
 
 const defaultForm = {
   id: 0,
@@ -113,13 +112,11 @@ const handleEnvChange = () => {
   const env = teamDbEnvs.value.find(e => e.envName === editForm.value.environment && e.teamName === editForm.value.applicantTeam)
   if (env) {
     const isOracle = env.dbType.toLowerCase() === 'oracle'
-    
     if (isOracle) {
       editForm.value.sourceDb = `IP: ${env.prodDbIp || '-'}, DB: ${env.prodDbName || '-'}, Schema: ${env.prodDbSchema || '-'}`
     } else {
       editForm.value.sourceDb = `IP: ${env.prodDbIp || '-'}, DB: ${env.prodDbName || '-'}`
     }
-
     if (editForm.value.operateType === 2) {
       if (isOracle) {
         editForm.value.targetDbOrPerson = `IP: ${env.testDbIp || '-'}, DB: ${env.testDbName || '-'}, Schema: ${env.testDbSchema || '-'}`
@@ -198,18 +195,16 @@ const handleSearch = () => {
   loadData()
 }
 
-const openCreateDialog = () => {
-  dialogTitle.value = '新建数据库数据同步申请'
+const showCreateForm = () => {
   editForm.value = { ...defaultForm }
-  isViewMode.value = false
-  dialogVisible.value = true
+  isEditMode.value = false
   message.value = ''
+  viewMode.value = 'form'
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
-const openEditDialog = (row: DBDataSyncRequest) => {
-  dialogTitle.value = '编辑数据库数据同步申请'
-  isViewMode.value = false
-  
+const startEdit = (row: DBDataSyncRequest) => {
+  isEditMode.value = true
   let formattedExpectedTime = row.expectedFinishTime
   if (formattedExpectedTime) {
     const d = new Date(formattedExpectedTime)
@@ -218,46 +213,39 @@ const openEditDialog = (row: DBDataSyncRequest) => {
       formattedExpectedTime = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
     }
   }
-
-  editForm.value = { 
-    ...defaultForm,
-    ...row,
-    expectedFinishTime: formattedExpectedTime,
-  }
-  dialogVisible.value = true
+  editForm.value = { ...defaultForm, ...row, expectedFinishTime: formattedExpectedTime }
   message.value = ''
+  viewMode.value = 'form'
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
-const openViewDialog = (row: DBDataSyncRequest) => {
-  openEditDialog(row)
-  dialogTitle.value = '查看数据库数据同步申请'
-  isViewMode.value = true
+const startView = (row: DBDataSyncRequest) => {
+  startEdit(row)
+  viewMode.value = 'view'
 }
 
-const closeDialog = () => {
-  dialogVisible.value = false
+const backToList = () => {
+  viewMode.value = 'list'
+  message.value = ''
+  loadData()
 }
 
 const saveRequest = async () => {
-  if (!editForm.value.expectedFinishTime || !editForm.value.urgencyLevel || 
-      !editForm.value.applyReason || !editForm.value.operateType || 
-      !editForm.value.sourceDb || !editForm.value.targetDbOrPerson || 
+  if (!editForm.value.expectedFinishTime || !editForm.value.urgencyLevel ||
+      !editForm.value.applyReason || !editForm.value.operateType ||
+      !editForm.value.sourceDb || !editForm.value.targetDbOrPerson ||
       !editForm.value.involvedDbSchemaTable || !editForm.value.estimatedDataVolume) {
-    message.value = '请填写所有必填项'
+    message.value = '❌ 请填写所有必填项'
     return
   }
-
   if (editForm.value.urgencyLevel === '紧急' && !editForm.value.urgencyReason) {
-    message.value = '紧急程度为“紧急”时，必须输入原因'
+    message.value = '❌ 紧急程度为"紧急"时，必须输入原因'
     return
   }
-
   if (editForm.value.containsSensitiveData === 1 && !editForm.value.desensitizationRule) {
-    message.value = '包含敏感信息时，请填写脱敏规则说明'
+    message.value = '❌ 包含敏感信息时，请填写脱敏规则说明'
     return
   }
-
-  // 清理不需要的字段
   if (editForm.value.urgencyLevel !== '紧急') {
     editForm.value.urgencyReason = ''
   }
@@ -265,42 +253,35 @@ const saveRequest = async () => {
     editForm.value.desensitizationRule = ''
   }
 
-  dialogLoading.value = true
+  loading.value = true
   message.value = ''
   try {
     const isEdit = editForm.value.id > 0
     const method = isEdit ? 'PUT' : 'POST'
-    
-    const payload = {
-      ...editForm.value,
-    }
-
     const res = await fetch('/api/db-data-sync-requests', {
       method,
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(editForm.value),
     })
     const data = await res.json()
     if (!res.ok || !data.ok) {
       message.value = data.message || '保存失败'
       return
     }
-    
-    dialogVisible.value = false
-    loadData()
+    showToast(data.message || (isEdit ? '更新成功' : '创建成功'), 'success')
+    backToList()
   } catch (err) {
     console.error(err)
     message.value = '保存失败，请检查网络或后端状态'
   } finally {
-    dialogLoading.value = false
+    loading.value = false
   }
 }
 
 const deleteRequest = async (id: number) => {
   const ok = await showConfirm('确定要删除该申请吗？')
   if (!ok) return
-  
   try {
     const res = await fetch('/api/db-data-sync-requests', {
       method: 'DELETE',
@@ -310,13 +291,14 @@ const deleteRequest = async (id: number) => {
     })
     const data = await res.json()
     if (!res.ok || !data.ok) {
-      alert(data.message || '删除失败')
+      showToast(data.message || '删除失败', 'error')
       return
     }
+    showToast('删除成功', 'success')
     loadData()
   } catch (err) {
     console.error(err)
-    alert('删除失败')
+    showToast('删除失败', 'error')
   }
 }
 
@@ -342,211 +324,211 @@ onMounted(() => {
 
 <template>
   <div class="card panel-card">
-    <div class="panel-header">
-      <h2>数据库数据同步申请</h2>
-      <div class="header-actions">
-        <button class="action-btn primary-btn" @click="openCreateDialog" type="button">新建申请</button>
+    <!-- ============ 列表视图 ============ -->
+    <template v-if="viewMode === 'list'">
+      <div class="panel-header">
+        <h2>数据库数据同步申请</h2>
+        <button class="action-btn primary-btn" @click="showCreateForm" type="button">+ 新建申请</button>
       </div>
-    </div>
-    
-    <div v-if="message && !dialogVisible" class="message-banner">{{ message }}</div>
 
-    <div class="search-bar">
-      <div class="search-item">
-        <label>操作类型</label>
-        <select v-model="searchForm.operateType">
-          <option value="">全部</option>
-          <option :value="1">迁移到其他数据库</option>
-          <option :value="2">迁移到测试库</option>
-          <option :value="3">导出为文件</option>
-        </select>
-      </div>
-      <div class="search-item">
-        <label>紧急程度</label>
-        <select v-model="searchForm.urgencyLevel">
-          <option value="">全部</option>
-          <option value="常规">常规</option>
-          <option value="重要">重要</option>
-          <option value="紧急">紧急</option>
-        </select>
-      </div>
-      <div class="search-actions">
-        <button class="action-btn" @click="handleSearch" type="button">搜索</button>
-        <button class="action-btn plain-btn" @click="resetSearch" type="button">重置</button>
-      </div>
-    </div>
+      <div v-if="message" class="message-banner">{{ message }}</div>
 
-    <div class="table-wrap" :class="{ loading: listLoading }">
-      <table class="result-table">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>申请人</th>
-            <th>申请时间</th>
-            <th>期望完成时间</th>
-            <th>紧急程度</th>
-            <th>操作类型</th>
-            <th>源数据库</th>
-            <th>目标库/人</th>
-            <th>执行DBA</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="listData.length === 0">
-            <td colspan="10" class="empty-text">暂无数据</td>
-          </tr>
-          <tr v-for="item in listData" :key="item.id">
-            <td>{{ item.id }}</td>
-            <td>{{ item.applicant }}</td>
-            <td>{{ formatDate(item.createTime) }}</td>
-            <td>{{ formatDate(item.expectedFinishTime) }}</td>
-            <td>
-              <span :class="['tag', item.urgencyLevel === '紧急' ? 'tag-danger' : (item.urgencyLevel === '重要' ? 'tag-warning' : 'tag-info')]">
-                {{ item.urgencyLevel }}
-              </span>
-            </td>
-            <td>{{ getOperateTypeName(item.operateType) }}</td>
-            <td>{{ item.sourceDb }}</td>
-            <td>{{ item.targetDbOrPerson }}</td>
-            <td>{{ item.executeDba || '-' }}</td>
-            <td>
-              <div class="row-actions" v-if="!item.executeDba">
-                <button class="text-btn" @click="openEditDialog(item)" type="button">编辑</button>
-                <button class="text-btn danger-text" @click="deleteRequest(item.id)" type="button">删除</button>
-              </div>
-              <div class="row-actions" v-else>
-                <button class="text-btn" @click="openViewDialog(item)" type="button">查看</button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="pagination">
-      <div class="page-size">
-        共 {{ totalCount }} 条，每页
-        <select v-model="pageSize" @change="handleSearch">
-          <option v-for="s in pageSizeOptions" :key="s" :value="s">{{ s }}</option>
-        </select>
-        条
-      </div>
-      <div class="page-nav">
-        <button class="pager-btn" :disabled="currentPage <= 1" @click="goPrevPage" type="button">上一页</button>
-        <span>第 {{ currentPage }} / {{ totalPages }} 页</span>
-        <button class="pager-btn" :disabled="currentPage >= totalPages" @click="goNextPage" type="button">下一页</button>
-      </div>
-    </div>
-
-    <!-- 弹窗 -->
-    <div v-if="dialogVisible" class="dialog-overlay">
-      <div class="dialog-content large-dialog">
-        <div class="dialog-header">
-          <h3>{{ dialogTitle }}</h3>
-          <button class="close-btn" @click="closeDialog" type="button">×</button>
+      <div class="search-bar">
+        <div class="search-item">
+          <label>操作类型</label>
+          <select v-model="searchForm.operateType" @change="handleSearch">
+            <option value="">全部</option>
+            <option :value="1">迁移到其他数据库</option>
+            <option :value="2">迁移到测试库</option>
+            <option :value="3">导出为文件</option>
+          </select>
         </div>
-        <div class="dialog-body">
-          
-          <fieldset :disabled="isViewMode" style="border: none; padding: 0; margin: 0; min-width: 0;">
+        <div class="search-item">
+          <label>紧急程度</label>
+          <select v-model="searchForm.urgencyLevel" @change="handleSearch">
+            <option value="">全部</option>
+            <option value="常规">常规</option>
+            <option value="重要">重要</option>
+            <option value="紧急">紧急</option>
+          </select>
+        </div>
+        <div class="search-actions">
+          <button class="action-btn plain-btn" @click="resetSearch" type="button">重置</button>
+        </div>
+      </div>
 
-          <div class="form-grid">
-            <div class="form-item">
-              <label>申请团队 <span v-if="!isViewMode" class="required">*</span></label>
-              <select v-model="editForm.applicantTeam" @change="editForm.environment = ''">
-                <option value="">请选择申请团队</option>
-                <option v-for="team in dynamicTeams" :key="team" :value="team">{{ team }}</option>
-              </select>
-            </div>
-            <div class="form-item">
-              <label>可用环境 (选填，选择后自动填入下方信息)</label>
-              <select v-model="editForm.environment" @change="handleEnvChange" :disabled="!editForm.applicantTeam">
-                <option value="">请选择环境</option>
-                <option v-for="env in availableEnvs" :key="env.id" :value="env.envName">{{ env.envName }}</option>
-              </select>
-            </div>
+      <div class="table-wrap" :class="{ loading: listLoading }">
+        <table class="result-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>申请人</th>
+              <th>申请时间</th>
+              <th>期望完成时间</th>
+              <th>紧急程度</th>
+              <th>操作类型</th>
+              <th>源数据库</th>
+              <th>目标库/人</th>
+              <th>执行DBA</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="listData.length === 0">
+              <td colspan="10" class="empty-text">暂无数据</td>
+            </tr>
+            <tr v-for="item in listData" :key="item.id">
+              <td>{{ item.id }}</td>
+              <td>{{ item.applicant }}</td>
+              <td>{{ formatDate(item.createTime) }}</td>
+              <td>{{ formatDate(item.expectedFinishTime) }}</td>
+              <td>
+                <span :class="['tag', item.urgencyLevel === '紧急' ? 'tag-danger' : (item.urgencyLevel === '重要' ? 'tag-warning' : 'tag-info')]">
+                  {{ item.urgencyLevel }}
+                </span>
+              </td>
+              <td>{{ getOperateTypeName(item.operateType) }}</td>
+              <td>{{ item.sourceDb }}</td>
+              <td>{{ item.targetDbOrPerson }}</td>
+              <td>{{ item.executeDba || '-' }}</td>
+              <td>
+                <div class="row-actions" v-if="!item.executeDba">
+                  <button class="text-btn" @click="startEdit(item)" type="button">编辑</button>
+                  <button class="text-btn danger-text" @click="deleteRequest(item.id)" type="button">删除</button>
+                </div>
+                <div class="row-actions" v-else>
+                  <button class="text-btn" @click="startView(item)" type="button">查看</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-            <div class="form-item">
-              <label>期望完成时间 <span v-if="!isViewMode" class="required">*</span></label>
-              <input v-model="editForm.expectedFinishTime" type="datetime-local" />
-            </div>
-            <div class="form-item">
-              <label>紧急程度 <span v-if="!isViewMode" class="required">*</span></label>
-              <select v-model="editForm.urgencyLevel">
-                <option value="常规">常规</option>
-                <option value="重要">重要</option>
-                <option value="紧急">紧急</option>
-              </select>
-            </div>
-            
-            <div class="form-item full-width" v-if="editForm.urgencyLevel === '紧急'">
-              <label>紧急原因说明 <span v-if="!isViewMode" class="required">*</span></label>
-              <input v-model="editForm.urgencyReason" type="text" placeholder="请填写紧急申请的原因" />
-            </div>
+      <div class="pagination">
+        <div class="page-size">
+          共 {{ totalCount }} 条，每页
+          <select v-model="pageSize" @change="handleSearch">
+            <option v-for="s in pageSizeOptions" :key="s" :value="s">{{ s }}</option>
+          </select>
+          条
+        </div>
+        <div class="page-nav">
+          <button class="pager-btn" :disabled="currentPage <= 1" @click="goPrevPage" type="button">上一页</button>
+          <span>第 {{ currentPage }} / {{ totalPages }} 页</span>
+          <button class="pager-btn" :disabled="currentPage >= totalPages" @click="goNextPage" type="button">下一页</button>
+        </div>
+      </div>
+    </template>
 
-            <div class="form-item full-width">
-              <label>操作类型 <span v-if="!isViewMode" class="required">*</span></label>
-              <div class="radio-group">
-                <label><input type="radio" :value="1" v-model="editForm.operateType" @change="handleOperateTypeChange" /> 迁移到其他数据库</label>
-                <label><input type="radio" :value="2" v-model="editForm.operateType" @change="handleOperateTypeChange" /> 迁移到测试库</label>
-                <label><input type="radio" :value="3" v-model="editForm.operateType" @change="handleOperateTypeChange" /> 导出为文件</label>
-              </div>
-            </div>
+    <!-- ============ 查看 / 登记 / 编辑视图 ============ -->
+    <template v-else>
+      <div class="form-header">
+        <h2 v-if="viewMode === 'view'">查看数据库数据同步申请</h2>
+        <h2 v-else-if="isEditMode">编辑数据库数据同步申请</h2>
+        <h2 v-else>新建数据库数据同步申请</h2>
+        <button class="action-btn secondary-btn back-btn" @click="backToList" type="button">← 返回列表</button>
+      </div>
+      <p v-if="message" class="inline-message">{{ message }}</p>
 
-            <div class="form-item">
-              <label>源数据库 <span v-if="!isViewMode" class="required">*</span></label>
-              <input v-model="editForm.sourceDb" type="text" placeholder="如：交易主库 Trade_DB (10.x.x.x)" />
-            </div>
-            
-            <div class="form-item">
-              <label>目标库/目标人 <span v-if="!isViewMode" class="required">*</span></label>
-              <input v-model="editForm.targetDbOrPerson" type="text" placeholder="如：交易测试库 Trade_Test_DB (192.x.x.x) / 或接收文件的人员" />
-            </div>
+      <fieldset :disabled="viewMode === 'view'" style="border: none; padding: 0; margin: 0;">
+      <div class="form-grid">
+        <div class="form-item">
+          <label>申请团队 <span v-if="viewMode !== 'view'" class="required">*</span></label>
+          <select v-model="editForm.applicantTeam" @change="editForm.environment = ''">
+            <option value="">请选择申请团队</option>
+            <option v-for="team in dynamicTeams" :key="team" :value="team">{{ team }}</option>
+          </select>
+        </div>
+        <div class="form-item">
+          <label>可用环境 (选填，选择后自动填入下方信息)</label>
+          <select v-model="editForm.environment" @change="handleEnvChange" :disabled="!editForm.applicantTeam">
+            <option value="">请选择环境</option>
+            <option v-for="env in availableEnvs" :key="env.id" :value="env.envName">{{ env.envName }}</option>
+          </select>
+        </div>
+        <div class="form-item">
+          <label>期望完成时间 <span v-if="viewMode !== 'view'" class="required">*</span></label>
+          <input v-model="editForm.expectedFinishTime" type="datetime-local" />
+        </div>
+        <div class="form-item">
+          <label>紧急程度 <span v-if="viewMode !== 'view'" class="required">*</span></label>
+          <select v-model="editForm.urgencyLevel">
+            <option value="常规">常规</option>
+            <option value="重要">重要</option>
+            <option value="紧急">紧急</option>
+          </select>
+        </div>
 
-            <div class="form-item full-width">
-              <label>涉及库名/Schema名/表名 <span v-if="!isViewMode" class="required">*</span></label>
-              <textarea v-model="editForm.involvedDbSchemaTable" rows="2" placeholder="请详细列出涉及的库/Schema/表"></textarea>
-            </div>
+        <div class="form-item full-width" v-if="editForm.urgencyLevel === '紧急'">
+          <label>紧急原因说明 <span v-if="viewMode !== 'view'" class="required">*</span></label>
+          <input v-model="editForm.urgencyReason" type="text" placeholder="请填写紧急申请的原因" />
+        </div>
 
-            <div class="form-item full-width">
-              <label>申请原因与目的 <span v-if="!isViewMode" class="required">*</span></label>
-              <textarea v-model="editForm.applyReason" rows="2" placeholder="(例如：为了复现线上 #12345 订单偶现的计算异常 Bug，需要同步该订单相关的流水数据到测试环境进行 Debug；或者：为了进行大促前的全链路压测，需要拉取近 3 天的真实订单量构造压测模型。)"></textarea>
-            </div>
-
-            <div class="form-item full-width">
-              <label>数据过滤条件</label>
-              <textarea v-model="editForm.dataFilterCondition" rows="2" placeholder="可选，如有需要请填写过滤条件(如 WHERE 语句等)"></textarea>
-            </div>
-
-            <div class="form-item">
-              <label>预估数据量 <span v-if="!isViewMode" class="required">*</span></label>
-              <input v-model="editForm.estimatedDataVolume" type="text" placeholder="如：约 1 万条 / 约 2GB" />
-            </div>
-
-            <div class="form-item">
-              <label>是否包含敏感信息 <span v-if="!isViewMode" class="required">*</span></label>
-              <select v-model="editForm.containsSensitiveData">
-                <option :value="0">否</option>
-                <option :value="1">是</option>
-              </select>
-            </div>
-
-            <div class="form-item full-width" v-if="editForm.containsSensitiveData === 1">
-              <label>脱敏规则说明 <span v-if="!isViewMode" class="required">*</span></label>
-              <textarea v-model="editForm.desensitizationRule" rows="2" placeholder="请详细说明哪些字段需要脱敏，以及脱敏规则..."></textarea>
-            </div>
+        <div class="form-item full-width">
+          <label>操作类型 <span v-if="viewMode !== 'view'" class="required">*</span></label>
+          <div class="radio-group">
+            <label><input type="radio" :value="1" v-model="editForm.operateType" @change="handleOperateTypeChange" /> 迁移到其他数据库</label>
+            <label><input type="radio" :value="2" v-model="editForm.operateType" @change="handleOperateTypeChange" /> 迁移到测试库</label>
+            <label><input type="radio" :value="3" v-model="editForm.operateType" @change="handleOperateTypeChange" /> 导出为文件</label>
           </div>
-          </fieldset>
         </div>
-        <div class="dialog-footer">
-          <span v-if="message" class="error-message">{{ message }}</span>
-          <button class="action-btn plain-btn" @click="closeDialog" :disabled="dialogLoading" type="button">{{ isViewMode ? '关闭' : '取消' }}</button>
-          <button v-if="!isViewMode" class="action-btn primary-btn" @click="saveRequest" :disabled="dialogLoading" type="button">
-            {{ dialogLoading ? '保存中...' : '确定保存' }}
-          </button>
+
+        <div class="form-item">
+          <label>源数据库 <span v-if="viewMode !== 'view'" class="required">*</span></label>
+          <input v-model="editForm.sourceDb" type="text" placeholder="如：交易主库 Trade_DB (10.x.x.x)" />
+        </div>
+        <div class="form-item">
+          <label>目标库/目标人 <span v-if="viewMode !== 'view'" class="required">*</span></label>
+          <input v-model="editForm.targetDbOrPerson" type="text" placeholder="如：交易测试库 Trade_Test_DB / 或接收文件的人员" />
+        </div>
+
+        <div class="form-item full-width">
+          <label>涉及库名/Schema名/表名 <span v-if="viewMode !== 'view'" class="required">*</span></label>
+          <textarea v-model="editForm.involvedDbSchemaTable" rows="2" placeholder="请详细列出涉及的库/Schema/表"></textarea>
+        </div>
+
+        <div class="form-item full-width">
+          <label>申请原因与目的 <span v-if="viewMode !== 'view'" class="required">*</span></label>
+          <textarea v-model="editForm.applyReason" rows="2" placeholder="请填写申请原因与目的"></textarea>
+        </div>
+
+        <div class="form-item full-width">
+          <label>数据过滤条件</label>
+          <textarea v-model="editForm.dataFilterCondition" rows="2" placeholder="可选，如有需要请填写过滤条件"></textarea>
+        </div>
+
+        <div class="form-item">
+          <label>预估数据量 <span v-if="viewMode !== 'view'" class="required">*</span></label>
+          <input v-model="editForm.estimatedDataVolume" type="text" placeholder="如：约 1 万条 / 约 2GB" />
+        </div>
+        <div class="form-item">
+          <label>是否包含敏感信息 <span v-if="viewMode !== 'view'" class="required">*</span></label>
+          <select v-model="editForm.containsSensitiveData">
+            <option :value="0">否</option>
+            <option :value="1">是</option>
+          </select>
+        </div>
+
+        <div class="form-item full-width" v-if="editForm.containsSensitiveData === 1">
+          <label>脱敏规则说明 <span v-if="viewMode !== 'view'" class="required">*</span></label>
+          <textarea v-model="editForm.desensitizationRule" rows="2" placeholder="请详细说明哪些字段需要脱敏"></textarea>
         </div>
       </div>
-    </div>
+      </fieldset>
+
+      <div class="btn-row">
+        <template v-if="viewMode === 'view'">
+          <button class="action-btn warning-btn" @click="backToList" type="button">返回列表</button>
+        </template>
+        <template v-else>
+          <button class="action-btn primary-btn" :disabled="loading" @click="saveRequest" type="button">
+            {{ loading ? '保存中...' : (isEditMode ? '保存修改' : '创建申请') }}
+          </button>
+          <button class="action-btn warning-btn" :disabled="loading" @click="backToList" type="button">取消</button>
+        </template>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -559,7 +541,7 @@ onMounted(() => {
 /* 搜索栏 */
 .search-bar { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; padding: 16px; background: #f8f9fa; border-radius: 8px; }
 .search-item { display: flex; align-items: center; gap: 8px; }
-.search-item label { font-size: 14px; color: #606266; }
+.search-item label { font-size: 14px; color: #606266; white-space: nowrap; flex-shrink: 0; }
 .search-item input, .search-item select { padding: 6px 10px; }
 .search-actions { display: flex; gap: 10px; align-items: center; }
 
@@ -579,25 +561,23 @@ onMounted(() => {
 .pagination { display: flex; justify-content: space-between; align-items: center; font-size: 14px; color: #606266; }
 .page-nav { display: flex; align-items: center; gap: 12px; }
 
-/* 弹窗 */
-.dialog-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: flex-start; padding-top: 5vh; z-index: 2000; overflow-y: auto; }
-.dialog-content { background: #fff; border-radius: 8px; width: 90%; max-width: 600px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); margin-bottom: 5vh; }
-.large-dialog { max-width: 800px; }
-.dialog-header { padding: 16px 20px; border-bottom: 1px solid #ebeef5; display: flex; justify-content: space-between; align-items: center; }
-.dialog-header h3 { margin: 0; font-size: 18px; color: #303133; }
-.close-btn { background: transparent; border: none; font-size: 20px; cursor: pointer; color: #909399; }
-.dialog-body { padding: 20px; }
-.dialog-footer { padding: 16px 20px; border-top: 1px solid #ebeef5; display: flex; justify-content: flex-end; gap: 12px; }
-.error-message { color: #f56c6c; font-size: 14px; margin-right: auto; align-self: center; }
-.message-banner { background: #fdf6ec; color: #e6a23c; padding: 10px 16px; border-radius: 4px; margin-bottom: 16px; font-size: 14px; }
+/* 表单头部 */
+.form-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.back-btn { white-space: nowrap; }
+.inline-message { color: #f56c6c; font-size: 14px; margin-bottom: 12px; }
 
-/* 表单（弹窗内两列） */
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+/* 按钮行 */
+.btn-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
+
+/* 表单 */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 .form-item { display: flex; flex-direction: column; gap: 6px; }
 .form-item.full-width { grid-column: span 2; }
 .form-item label { font-size: 14px; color: #606266; }
 
-/* 复选框/单选框组 */
-.checkbox-group, .radio-group { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 6px 0; }
-.checkbox-group label, .radio-group label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+/* 单选框组 */
+.radio-group { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 6px 0; }
+.radio-group label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+
+.message-banner { background: #fdf6ec; color: #e6a23c; padding: 10px 16px; border-radius: 4px; margin-bottom: 16px; font-size: 14px; }
 </style>

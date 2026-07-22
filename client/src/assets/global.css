@@ -19,6 +19,7 @@
   --color-bg-page: #f0f2f5;
   --color-bg-card: #fff;
   --color-bg-hover: #f5f7fa;
+  --color-bg-table-header: #d8dee8;
 
   --color-border-base: #dcdfe6;
   --color-border-light: #e4e7ed;
@@ -174,8 +175,8 @@ label {
   overflow-wrap: break-word;
 }
 .result-table th {
-  background: var(--color-bg-hover);
-  color: var(--color-text-secondary);
+  background: var(--color-bg-table-header);
+  color: var(--color-text-regular);
   font-weight: bold;
   white-space: nowrap;
 }
