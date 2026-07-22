@@ -546,7 +546,7 @@ onMounted(() => {
     </div>
 
     <div class="table-wrap" :class="{ loading: listLoading }">
-      <table class="data-table">
+      <table class="result-table">
         <thead>
           <tr>
             <th>申请团队</th>
@@ -567,7 +567,7 @@ onMounted(() => {
         </thead>
         <tbody>
           <tr v-if="listData.length === 0">
-            <td colspan="14" class="empty-cell">暂无数据</td>
+            <td colspan="14" class="empty-text">暂无数据</td>
           </tr>
           <tr v-for="item in listData" :key="item.id">
             <td>{{ item.applicantTeam }}</td>
@@ -782,10 +782,6 @@ onMounted(() => {
 /* 表格 */
 .table-wrap { border: 1px solid #ebeef5; border-radius: 4px; margin-bottom: 20px; }
 .table-wrap.loading { opacity: 0.6; pointer-events: none; }
-.data-table { width: 100%; border-collapse: collapse; }
-.data-table th, .data-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ebeef5; font-size: 14px; }
-.data-table th { background: #f5f7fa; color: #909399; font-weight: bold; }
-.empty-cell { text-align: center !important; color: #909399; padding: 30px !important; }
 
 /* 分页（两栏布局） */
 .pagination { display: flex; justify-content: space-between; align-items: center; font-size: 14px; color: #606266; }
