@@ -1,4 +1,23 @@
 <script setup lang="ts">
+/**
+ * AdminDbAlertHandlePanel.vue
+ * ------------------------------------------------------------------
+ * 该组件是「数据库告警处理（管理员）」页面。
+ *
+ * 布局模式：list 列表 ↔ form 新增/编辑，列表头部下拉筛选自动响应。
+ *
+ * 主要功能：
+ * 1. 分页展示告警处理记录，按数据库类型 / 告警等级 / 告警分类自动筛选。
+ * 2. 新增告警处理记录（普通用户也可提交）。
+ * 3. 管理员补录处理结果：处理人、处理开始/结束时间、处理结果。
+ * 4. 编辑 / 删除（按 handler 归属区分权限）。
+ *
+ * 关键接口：
+ * - GET    /api/db-alert-handles              用户查询/CRUD
+ * - GET    /api/admin/db-alert-handles         管理员查询全部
+ * - PUT    /api/admin/db-alert-handles/result  补录处理结果
+ */
+
 import { onMounted, ref } from 'vue'
 
 interface AlertHandleItem {

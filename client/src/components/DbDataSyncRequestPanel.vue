@@ -1,4 +1,23 @@
 <script setup lang="ts">
+/**
+ * DbDataSyncRequestPanel.vue
+ * ------------------------------------------------------------------
+ * 该组件是「数据库数据同步申请」页面（申请人视角）。
+ *
+ * 布局模式：list 列表 ↔ view 查看 ↔ form 新建/编辑。
+ *
+ * 主要功能：
+ * 1. 分页展示自己提交的数据同步申请，按操作类型 / 紧急程度筛选（下拉自动响应）。
+ * 2. 新建 / 编辑 / 删除申请；未由 DBA 登记执行的记录才可编辑/删除。
+ * 3. 操作类型单选（迁移到其他库 / 迁移到测试库 / 导出为文件），选「迁移到测试库」时按环境自动填入目标库。
+ * 4. 紧急程度为「紧急」时必填紧急原因；包含敏感信息时必填脱敏规则说明。
+ * 5. 选择「团队 + 环境」后自动填入源库 / 目标库连接信息。
+ *
+ * 关键接口：
+ * - GET/POST/PUT/DELETE /api/db-data-sync-requests
+ * - GET /api/team-db-envs  团队环境配置（用于自动填入连接信息）
+ */
+
 import { ref, onMounted, computed } from 'vue'
 import { showToast, showConfirm } from '../utils/toast'
 
@@ -108,6 +127,8 @@ const availableEnvs = computed(() => {
   return teamDbEnvs.value.filter(e => e.teamName === editForm.value.applicantTeam)
 })
 
+// 选择团队+环境后，按数据库类型自动填入源库连接信息；
+// 若操作类型为「迁移到测试库(2)」，同时填入目标测试库连接信息。
 const handleEnvChange = () => {
   const env = teamDbEnvs.value.find(e => e.envName === editForm.value.environment && e.teamName === editForm.value.applicantTeam)
   if (env) {
@@ -127,6 +148,7 @@ const handleEnvChange = () => {
   }
 }
 
+// 操作类型切换为「迁移到测试库(2)」时，若已选环境，补填目标测试库连接信息
 const handleOperateTypeChange = () => {
   if (editForm.value.operateType === 2 && editForm.value.environment) {
     const env = teamDbEnvs.value.find(e => e.envName === editForm.value.environment && e.teamName === editForm.value.applicantTeam)

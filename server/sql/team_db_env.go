@@ -6,6 +6,17 @@ import (
 	"sql_platform/server/config"
 )
 
+/*
+team_db_env.go
+----------------------------------------------------------------------
+该文件负责团队数据库环境配置的管理，对应前端「团队环境配置」相关页面。
+
+主要功能：
+1. 维护各团队（交易/运营/后台/增长等）的测试线、生产线数据库连接信息。
+2. 提供按团队分页查询、全量查询，以及新增/编辑/删除环境配置。
+3. 用户在提交变更/同步申请时，可按团队选择环境自动填入连接信息，减少手工录入。
+*/
+
 // TeamDbEnvRecord
 // ------------------------------------------------------------
 // 团队数据库环境配置表
@@ -24,6 +35,7 @@ type TeamDbEnvRecord struct {
 	UpdateTime     string `json:"updateTime"`
 }
 
+// CreateTeamDbEnv 新增一条团队数据库环境配置。
 func CreateTeamDbEnv(item TeamDbEnvRecord) error {
 	db, err := config.GetPlatformDB()
 	if err != nil {
@@ -45,6 +57,7 @@ INSERT INTO platform_team_db_env (
 	return err
 }
 
+// UpdateTeamDbEnv 按主键更新一条团队数据库环境配置。
 func UpdateTeamDbEnv(item TeamDbEnvRecord) error {
 	db, err := config.GetPlatformDB()
 	if err != nil {
@@ -78,6 +91,7 @@ WHERE id = ?
 	return err
 }
 
+// DeleteTeamDbEnv 按主键删除一条团队数据库环境配置。
 func DeleteTeamDbEnv(id int64) error {
 	db, err := config.GetPlatformDB()
 	if err != nil {
@@ -92,6 +106,7 @@ func DeleteTeamDbEnv(id int64) error {
 	return err
 }
 
+// ListTeamDbEnvs 分页查询团队数据库环境配置，可按团队名过滤，按 id 倒序返回。
 func ListTeamDbEnvs(page int, pageSize int, teamName string) (int64, []TeamDbEnvRecord, error) {
 	db, err := config.GetPlatformDB()
 	if err != nil {
@@ -153,6 +168,7 @@ WHERE 1=1
 	return total, list, nil
 }
 
+// ListAllTeamDbEnvs 查询全部团队数据库环境配置，按团队名、环境名排序，供前端下拉选择使用。
 func ListAllTeamDbEnvs() ([]TeamDbEnvRecord, error) {
 	db, err := config.GetPlatformDB()
 	if err != nil {

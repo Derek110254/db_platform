@@ -820,38 +820,18 @@ func changePasswordHandler(c *gin.Context) {
 		return
 	}
 
-	db, err := config.GetPlatformDB()
+	err := appsql.ChangePassword(userID, req.OldPassword, req.NewPassword)
 	if err != nil {
+		if err == appsql.ErrOldPasswordMismatch {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"ok":      false,
+				"message": "原密码不正确",
+			})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":      false,
-			"message": "连接平台库失败：" + err.Error(),
-		})
-		return
-	}
-
-	var storedPassword string
-	err = db.QueryRow(`SELECT fixed_aes_decrypt(password_cipher) FROM platform_user WHERE id = ?`, userID).Scan(&storedPassword)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "查询原密码失败：" + err.Error(),
-		})
-		return
-	}
-
-	if storedPassword != req.OldPassword {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"ok":      false,
-			"message": "原密码不正确",
-		})
-		return
-	}
-
-	_, err = db.Exec(`UPDATE platform_user SET password_cipher = fixed_aes_encrypt(?), need_change_pwd = 0 WHERE id = ?`, req.NewPassword, userID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "更新密码失败：" + err.Error(),
+			"message": "修改密码失败：" + err.Error(),
 		})
 		return
 	}
@@ -1285,21 +1265,7 @@ func deleteSQLFavoriteHandler(c *gin.Context) {
 // ----------------------------------------------------------------------
 
 func adminListUsersHandler(c *gin.Context) {
-	db, err := config.GetPlatformDB()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "连接平台库失败：" + err.Error(),
-		})
-		return
-	}
-
-	rows, err := db.Query(`
-SELECT id, username, display_name, role_name, is_enabled, can_query_data, can_query_plan, create_time, update_time
-FROM platform_user
-WHERE is_deleted = 0
-ORDER BY id DESC
-`)
+	users, err := appsql.ListUsers()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":      false,
@@ -1307,43 +1273,20 @@ ORDER BY id DESC
 		})
 		return
 	}
-	defer rows.Close()
 
-	items := make([]gin.H, 0)
-	for rows.Next() {
-		var id int64
-		var username, displayName, roleName string
-		var isEnabled, canQueryData, canQueryPlan int
-		var createTime, updateTime string
-
-		if err := rows.Scan(&id, &username, &displayName, &roleName, &isEnabled, &canQueryData, &canQueryPlan, &createTime, &updateTime); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"ok":      false,
-				"message": "读取用户数据失败：" + err.Error(),
-			})
-			return
-		}
-
-		allowedConnections, err := auth.ListUserAllowedConnectionNames(id)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"ok":      false,
-				"message": "读取用户连接权限失败：" + err.Error(),
-			})
-			return
-		}
-
+	items := make([]gin.H, 0, len(users))
+	for _, u := range users {
 		items = append(items, gin.H{
-			"id":                 id,
-			"username":           username,
-			"displayName":        displayName,
-			"roleName":           roleName,
-			"isEnabled":          isEnabled,
-			"canQueryData":       canQueryData,
-			"canQueryPlan":       canQueryPlan,
-			"allowedConnections": allowedConnections,
-			"createTime":         createTime,
-			"updateTime":         updateTime,
+			"id":                 u.ID,
+			"username":           u.Username,
+			"displayName":        u.DisplayName,
+			"roleName":           u.RoleName,
+			"isEnabled":          u.IsEnabled,
+			"canQueryData":       u.CanQueryData,
+			"canQueryPlan":       u.CanQueryPlan,
+			"allowedConnections": u.AllowedConnections,
+			"createTime":         u.CreateTime,
+			"updateTime":         u.UpdateTime,
 		})
 	}
 
@@ -1408,93 +1351,18 @@ func adminCreateUserHandler(c *gin.Context) {
 		req.IsEnabled = 1
 	}
 
-	db, err := config.GetPlatformDB()
+	_, err := appsql.CreateUser(req.Username, req.Password, req.DisplayName, req.RoleName, req.IsEnabled, req.CanQueryData, req.CanQueryPlan, req.AllowedConnections)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "连接平台库失败：" + err.Error(),
-		})
-		return
-	}
-
-	var exists int
-	if err := db.QueryRow(`SELECT COUNT(1) FROM platform_user WHERE username = ? AND is_deleted = 0`, req.Username).Scan(&exists); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "校验用户名失败：" + err.Error(),
-		})
-		return
-	}
-	if exists > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"ok":      false,
-			"message": "用户名已存在",
-		})
-		return
-	}
-
-	tx, err := db.Begin()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "开启事务失败：" + err.Error(),
-		})
-		return
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	result, err := tx.Exec(`
-INSERT INTO platform_user (
-    username,
-    password_cipher,
-    display_name,
-    role_name,
-    is_enabled,
-    can_query_data,
-    can_query_plan
-) VALUES (
-    ?,
-    fixed_aes_encrypt(?),
-    ?,
-    ?,
-    ?,
-    ?,
-    ?
-)
-`, req.Username, req.Password, req.DisplayName, req.RoleName, req.IsEnabled, req.CanQueryData, req.CanQueryPlan)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "创建用户失败：" + err.Error(),
-		})
-		return
-	}
-
-	userID, err := result.LastInsertId()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "获取新用户ID失败：" + err.Error(),
-		})
-		return
-	}
-
-	if req.RoleName == "user" {
-		if err := auth.SaveUserAllowedConnectionsTx(tx, userID, req.AllowedConnections); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
+		if err == appsql.ErrUsernameExists {
+			c.JSON(http.StatusBadRequest, gin.H{
 				"ok":      false,
-				"message": "保存用户连接权限失败：" + err.Error(),
+				"message": "用户名已存在",
 			})
 			return
 		}
-	}
-
-	if err := tx.Commit(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":      false,
-			"message": "提交事务失败：" + err.Error(),
+			"message": "创建用户失败：" + err.Error(),
 		})
 		return
 	}
@@ -1560,86 +1428,18 @@ func adminUpdateUserHandler(c *gin.Context) {
 		req.IsEnabled = 1
 	}
 
-	db, err := config.GetPlatformDB()
+	err := appsql.UpdateUser(req.ID, req.Username, req.Password, req.DisplayName, req.RoleName, req.IsEnabled, req.CanQueryData, req.CanQueryPlan, req.AllowedConnections)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "连接平台库失败：" + err.Error(),
-		})
-		return
-	}
-
-	var exists int
-	if err := db.QueryRow(`SELECT COUNT(1) FROM platform_user WHERE username = ? AND id <> ? AND is_deleted = 0`, req.Username, req.ID).Scan(&exists); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "校验用户名失败：" + err.Error(),
-		})
-		return
-	}
-	if exists > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"ok":      false,
-			"message": "用户名已存在",
-		})
-		return
-	}
-
-	tx, err := db.Begin()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "开启事务失败：" + err.Error(),
-		})
-		return
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	if req.Password == "" {
-		_, err = tx.Exec(`
-UPDATE platform_user
-SET username = ?, display_name = ?, role_name = ?, is_enabled = ?, can_query_data = ?, can_query_plan = ?
-WHERE id = ?
-`, req.Username, req.DisplayName, req.RoleName, req.IsEnabled, req.CanQueryData, req.CanQueryPlan, req.ID)
-	} else {
-		_, err = tx.Exec(`
-UPDATE platform_user
-SET username = ?, password_cipher = fixed_aes_encrypt(?), display_name = ?, role_name = ?, is_enabled = ?, can_query_data = ?, can_query_plan = ?
-WHERE id = ?
-`, req.Username, req.Password, req.DisplayName, req.RoleName, req.IsEnabled, req.CanQueryData, req.CanQueryPlan, req.ID)
-	}
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "更新用户失败：" + err.Error(),
-		})
-		return
-	}
-
-	if req.RoleName == "user" {
-		if err := auth.SaveUserAllowedConnectionsTx(tx, req.ID, req.AllowedConnections); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
+		if err == appsql.ErrUsernameExists {
+			c.JSON(http.StatusBadRequest, gin.H{
 				"ok":      false,
-				"message": "更新用户连接权限失败：" + err.Error(),
+				"message": "用户名已存在",
 			})
 			return
 		}
-	} else {
-		if _, err := tx.Exec(`DELETE FROM platform_user_db_connection WHERE user_id = ?`, req.ID); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"ok":      false,
-				"message": "清理管理员连接权限关系失败：" + err.Error(),
-			})
-			return
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":      false,
-			"message": "提交事务失败：" + err.Error(),
+			"message": "编辑用户失败：" + err.Error(),
 		})
 		return
 	}
@@ -1667,74 +1467,18 @@ func adminDeleteUserHandler(c *gin.Context) {
 		return
 	}
 
-	db, err := config.GetPlatformDB()
+	err := appsql.DeleteUser(req.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "连接平台库失败：" + err.Error(),
-		})
-		return
-	}
-
-	tx, err := db.Begin()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "开启事务失败：" + err.Error(),
-		})
-		return
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	if _, err := tx.Exec(`DELETE FROM platform_user_db_connection WHERE user_id = ?`, req.ID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "删除用户连接权限失败：" + err.Error(),
-		})
-		return
-	}
-
-	// 删除该用户 SQL 收藏
-	if _, err := tx.Exec(`DELETE FROM platform_sql_favorite WHERE user_id = ?`, req.ID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "删除用户 SQL 收藏失败：" + err.Error(),
-		})
-		return
-	}
-
-	if _, err := tx.Exec(`DELETE FROM platform_session WHERE user_id = ?`, req.ID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "删除用户会话失败：" + err.Error(),
-		})
-		return
-	}
-
-	res, err := tx.Exec(`UPDATE platform_user SET is_deleted = 1 WHERE id = ?`, req.ID)
-	if err != nil {
+		if err == appsql.ErrUserNotFound {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"ok":      false,
+				"message": "用户不存在或已被删除",
+			})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":      false,
 			"message": "删除用户失败：" + err.Error(),
-		})
-		return
-	}
-
-	affected, _ := res.RowsAffected()
-	if affected == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"ok":      false,
-			"message": "用户不存在或已被删除",
-		})
-		return
-	}
-
-	if err := tx.Commit(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "提交事务失败：" + err.Error(),
 		})
 		return
 	}
@@ -1750,20 +1494,7 @@ func adminDeleteUserHandler(c *gin.Context) {
 // ----------------------------------------------------------------------
 
 func adminListConnectionsHandler(c *gin.Context) {
-	db, err := config.GetPlatformDB()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "连接平台库失败：" + err.Error(),
-		})
-		return
-	}
-
-	rows, err := db.Query(`
-SELECT id, name, db_type, host, port, username, database_name, service_name, is_enabled, can_connect, create_time, update_time
-FROM platform_db_connection
-ORDER BY id DESC
-`)
+	connections, err := appsql.ListConnections()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":      false,
@@ -1771,49 +1502,22 @@ ORDER BY id DESC
 		})
 		return
 	}
-	defer rows.Close()
 
-	items := make([]gin.H, 0)
-	for rows.Next() {
-		var id int64
-		var name, dbType, host, username, databaseName, serviceName string
-		var port, isEnabled, canConnect int
-		var createTime, updateTime string
-
-		if err := rows.Scan(
-			&id,
-			&name,
-			&dbType,
-			&host,
-			&port,
-			&username,
-			&databaseName,
-			&serviceName,
-			&isEnabled,
-			&canConnect,
-			&createTime,
-			&updateTime,
-		); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"ok":      false,
-				"message": "读取连接配置失败：" + err.Error(),
-			})
-			return
-		}
-
+	items := make([]gin.H, 0, len(connections))
+	for _, conn := range connections {
 		items = append(items, gin.H{
-			"id":           id,
-			"name":         name,
-			"dbType":       dbType,
-			"host":         host,
-			"port":         port,
-			"username":     username,
-			"databaseName": databaseName,
-			"serviceName":  serviceName,
-			"isEnabled":    isEnabled,
-			"canConnect":   canConnect,
-			"createTime":   createTime,
-			"updateTime":   updateTime,
+			"id":           conn.ID,
+			"name":         conn.Name,
+			"dbType":       conn.DBType,
+			"host":         conn.Host,
+			"port":         conn.Port,
+			"username":     conn.Username,
+			"databaseName": conn.DatabaseName,
+			"serviceName":  conn.ServiceName,
+			"isEnabled":    conn.IsEnabled,
+			"canConnect":   conn.CanConnect,
+			"createTime":   conn.CreateTime,
+			"updateTime":   conn.UpdateTime,
 		})
 	}
 
@@ -1877,57 +1581,26 @@ func adminCreateConnectionHandler(c *gin.Context) {
 		req.IsEnabled = 1
 	}
 
-	db, err := config.GetPlatformDB()
+	err := appsql.CreateConnection(appsql.ConnectionRecord{
+		Name:         req.Name,
+		DBType:       req.DBType,
+		Host:         req.Host,
+		Port:         req.Port,
+		Username:     req.Username,
+		Password:     req.Password,
+		DatabaseName: req.DatabaseName,
+		ServiceName:  req.ServiceName,
+		IsEnabled:    req.IsEnabled,
+		CanConnect:   req.CanConnect,
+	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "连接平台库失败：" + err.Error(),
-		})
-		return
-	}
-
-	var exists int
-	if err := db.QueryRow(`SELECT COUNT(1) FROM platform_db_connection WHERE name = ?`, req.Name).Scan(&exists); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "校验连接名称失败：" + err.Error(),
-		})
-		return
-	}
-	if exists > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"ok":      false,
-			"message": "连接名称已存在",
-		})
-		return
-	}
-
-	_, err = db.Exec(`
-INSERT INTO platform_db_connection (
-    name,
-    db_type,
-    host,
-    port,
-    username,
-    password_cipher,
-    database_name,
-    service_name,
-    is_enabled,
-    can_connect
-) VALUES (
-    ?,
-    ?,
-    ?,
-    ?,
-    ?,
-    fixed_aes_encrypt(?),
-    ?,
-    ?,
-    ?,
-    ?
-)
-`, req.Name, req.DBType, req.Host, req.Port, req.Username, req.Password, req.DatabaseName, req.ServiceName, req.IsEnabled, req.CanConnect)
-	if err != nil {
+		if err == appsql.ErrConnectionNameExists {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"ok":      false,
+				"message": "连接名称已存在",
+			})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":      false,
 			"message": "创建连接配置失败：" + err.Error(),
@@ -2001,109 +1674,36 @@ func adminUpdateConnectionHandler(c *gin.Context) {
 		req.CanConnect = 1
 	}
 
-	db, err := config.GetPlatformDB()
+	err := appsql.UpdateConnection(req.ID, appsql.ConnectionRecord{
+		Name:         req.Name,
+		DBType:       req.DBType,
+		Host:         req.Host,
+		Port:         req.Port,
+		Username:     req.Username,
+		Password:     req.Password,
+		DatabaseName: req.DatabaseName,
+		ServiceName:  req.ServiceName,
+		IsEnabled:    req.IsEnabled,
+		CanConnect:   req.CanConnect,
+	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "连接平台库失败：" + err.Error(),
-		})
-		return
-	}
-
-	// 读取当前连接名称，用于判断是否需要级联更新
-	var currentName string
-	if err := db.QueryRow(`SELECT name FROM platform_db_connection WHERE id = ?`, req.ID).Scan(&currentName); err != nil {
-		if err == sql.ErrNoRows {
+		if err == appsql.ErrConnectionNotFound {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"ok":      false,
 				"message": "连接不存在",
 			})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "读取连接失败：" + err.Error(),
-		})
-		return
-	}
-
-	// 如果修改了连接名称，检查新名称是否已被占用
-	nameChanged := currentName != req.Name
-	if nameChanged {
-		var count int
-		if err := db.QueryRow(`SELECT COUNT(1) FROM platform_db_connection WHERE name = ? AND id != ?`, req.Name, req.ID).Scan(&count); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"ok":      false,
-				"message": "检查连接名称失败：" + err.Error(),
-			})
-			return
-		}
-		if count > 0 {
+		if err == appsql.ErrConnectionNameExists {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"ok":      false,
 				"message": "连接名称已存在",
 			})
 			return
 		}
-	}
-
-	// 使用事务，确保连接名称修改和级联更新原子性
-	tx, err := db.Begin()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "开启事务失败：" + err.Error(),
-		})
-		return
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	if req.Password == "" {
-		_, err = tx.Exec(`
-UPDATE platform_db_connection
-SET name = ?, db_type = ?, host = ?, port = ?, username = ?, database_name = ?, service_name = ?, is_enabled = ?, can_connect = ?
-WHERE id = ?
-`, req.Name, req.DBType, req.Host, req.Port, req.Username, req.DatabaseName, req.ServiceName, req.IsEnabled, req.CanConnect, req.ID)
-	} else {
-		_, err = tx.Exec(`
-UPDATE platform_db_connection
-SET name = ?, db_type = ?, host = ?, port = ?, username = ?, password_cipher = fixed_aes_encrypt(?), database_name = ?, service_name = ?, is_enabled = ?, can_connect = ?
-WHERE id = ?
-`, req.Name, req.DBType, req.Host, req.Port, req.Username, req.Password, req.DatabaseName, req.ServiceName, req.IsEnabled, req.CanConnect, req.ID)
-	}
-	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":      false,
 			"message": "编辑连接配置失败：" + err.Error(),
-		})
-		return
-	}
-
-	// 如果连接名称变更，级联更新所有引用 connection_name 的关联表
-	if nameChanged {
-		tables := []string{
-			"platform_user_db_connection",
-			"platform_sql_favorite",
-			"platform_sql_audit",
-		}
-		for _, table := range tables {
-			_, err = tx.Exec(fmt.Sprintf(`UPDATE %s SET connection_name = ? WHERE connection_name = ?`, table), req.Name, currentName)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"ok":      false,
-					"message": fmt.Sprintf("更新关联表 %s 失败：%s", table, err.Error()),
-				})
-				return
-			}
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "提交事务失败：" + err.Error(),
 		})
 		return
 	}
@@ -2131,74 +1731,25 @@ func adminDeleteConnectionHandler(c *gin.Context) {
 		return
 	}
 
-	db, err := config.GetPlatformDB()
+	err := appsql.DeleteConnection(req.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "连接平台库失败：" + err.Error(),
-		})
-		return
-	}
-
-	var name string
-	if err := db.QueryRow(`SELECT name FROM platform_db_connection WHERE id = ?`, req.ID).Scan(&name); err != nil {
-		if err == sql.ErrNoRows {
+		if err == appsql.ErrConnectionNotFound {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"ok":      false,
-				"message": "连接不存在",
+				"message": "连接不存在或已被删除",
+			})
+			return
+		}
+		if err == appsql.ErrConnectionInUse {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"ok":      false,
+				"message": "该连接仍被用户权限引用，无法删除。请先取消用户分配后再删除",
 			})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":      false,
-			"message": "读取连接失败：" + err.Error(),
-		})
-		return
-	}
-
-	var refCount int
-	if err := db.QueryRow(`SELECT COUNT(1) FROM platform_user_db_connection WHERE connection_name = ?`, name).Scan(&refCount); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "校验连接引用关系失败：" + err.Error(),
-		})
-		return
-	}
-	if refCount > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"ok":      false,
-			"message": "该连接仍被用户权限引用，无法删除。请先取消用户分配后再删除",
-		})
-		return
-	}
-
-	// SQL 收藏里如果仍有该 connection_name，不阻止删除，但会把它清空，避免脏引用
-	if _, err := db.Exec(`
-UPDATE platform_sql_favorite
-SET connection_name = ''
-WHERE connection_name = ?
-`, name); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
-			"message": "清理 SQL 收藏关联连接失败：" + err.Error(),
-		})
-		return
-	}
-
-	res, err := db.Exec(`DELETE FROM platform_db_connection WHERE id = ?`, req.ID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":      false,
 			"message": "删除连接配置失败：" + err.Error(),
-		})
-		return
-	}
-
-	affected, _ := res.RowsAffected()
-	if affected == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"ok":      false,
-			"message": "连接不存在或已被删除",
 		})
 		return
 	}
@@ -2249,20 +1800,15 @@ func adminTestConnectionHandler(c *gin.Context) {
 
 	password := req.Password
 	if password == "" && req.ID > 0 {
-		db, err := config.GetPlatformDB()
-		if err == nil {
-			var plain string
-			err = db.QueryRow("SELECT fixed_aes_decrypt(password_cipher) FROM platform_db_connection WHERE id = ?", req.ID).Scan(&plain)
-			if err == nil {
-				password = plain
-			} else if err != sql.ErrNoRows {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"ok":      false,
-					"message": "获取密码失败：" + err.Error(),
-				})
-				return
-			}
+		plain, err := appsql.GetConnectionPasswordPlain(req.ID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"ok":      false,
+				"message": "获取密码失败：" + err.Error(),
+			})
+			return
 		}
+		password = plain
 	}
 
 	var dsn string

@@ -33,6 +33,7 @@ type DDLIssue struct {
 	RuleKey     string          `json:"-"`
 }
 
+// DDLCheckResponse 是 DDL 合规性检查的最终返回结构，汇总问题数与问题列表供前端展示。
 type DDLCheckResponse struct {
 	OK         bool       `json:"ok"`
 	DBType     string     `json:"dbType"`
@@ -41,11 +42,13 @@ type DDLCheckResponse struct {
 	Issues     []DDLIssue `json:"issues"`
 }
 
+// ddlColumn 表示从建表/改表语句中抽取出的单个字段信息，保留原始文本以便后续规则检查。
 type ddlColumn struct {
 	Name string
 	Raw  string
 }
 
+// ddlIndex 表示从建表或 CREATE INDEX 语句中抽取出的索引信息，用于命名规范与冗余索引检查。
 type ddlIndex struct {
 	Name      string
 	TableName string
@@ -516,6 +519,7 @@ func checkTableRules(db DBType, table ddlTable, commentedColumns map[string]bool
 	return issues
 }
 
+// checkIndexNamingRules 检查索引命名规范：唯一索引应以 uk_ 开头，普通索引应以 idx_ 开头。
 func checkIndexNamingRules(indexes []ddlIndex) []DDLIssue {
 	issues := make([]DDLIssue, 0)
 	for _, idx := range indexes {
@@ -534,6 +538,7 @@ func checkIndexNamingRules(indexes []ddlIndex) []DDLIssue {
 	return issues
 }
 
+// redundantIndexIssues 检测冗余索引：若某索引列是另一更长索引列的前缀，则视为冗余。
 func redundantIndexIssues(indexes []ddlIndex) []DDLIssue {
 	issues := make([]DDLIssue, 0)
 	for i := 0; i < len(indexes); i++ {
@@ -632,6 +637,7 @@ func parseCreateTable(stmt SQLStatement) (ddlTable, bool) {
 	return result, true
 }
 
+// parseStandaloneCreateIndex 解析独立的 CREATE [UNIQUE] INDEX 语句，提取索引名、表名与列。
 func parseStandaloneCreateIndex(raw string) (ddlIndex, bool) {
 	m := reCreateIndex.FindStringSubmatch(strings.TrimSpace(raw))
 	if len(m) == 0 {
@@ -652,6 +658,8 @@ func parseStandaloneCreateIndex(raw string) (ddlIndex, bool) {
 	}, true
 }
 
+// parseInlineIndex 解析建表语句内联定义的索引（如 KEY/INDEX/UNIQUE KEY/CONSTRAINT）。
+// 不属于索引的约束（如纯外键约束）会被跳过。
 func parseInlineIndex(raw string, tableName string) (ddlIndex, bool) {
 	upper := strings.ToUpper(strings.TrimSpace(raw))
 	if strings.HasPrefix(upper, "CONSTRAINT ") &&
@@ -753,6 +761,8 @@ func splitDDLItems(body string) []string {
 	return items
 }
 
+// extractLeadingIdentifier 从字段定义文本中提取首个标识符作为字段名，
+// 若首词是约束类关键字（PRIMARY/UNIQUE/KEY/INDEX/CONSTRAINT/FOREIGN/CHECK）则返回空。
 func extractLeadingIdentifier(raw string) string {
 	fields := strings.Fields(strings.TrimSpace(raw))
 	if len(fields) == 0 {
@@ -766,6 +776,7 @@ func extractLeadingIdentifier(raw string) string {
 	}
 }
 
+// parseColumns 解析索引定义括号内的列名列表，按逗号切分并清洗每个列名。
 func parseColumns(raw string) []string {
 	parts := strings.Split(raw, ",")
 	cols := make([]string, 0, len(parts))
@@ -782,6 +793,7 @@ func parseColumns(raw string) []string {
 	return cols
 }
 
+// extractTailKV 从建表语句尾部按指定正则提取键值（如 ENGINE、CHARSET）。
 func extractTailKV(text, pattern string) string {
 	re := regexp.MustCompile(`(?is)` + pattern)
 	m := re.FindStringSubmatch(text)
@@ -791,6 +803,7 @@ func extractTailKV(text, pattern string) string {
 	return ""
 }
 
+// isPrefixColumns 判断 shorter 是否为 longer 的前缀列（用于冗余索引判定）。
 func isPrefixColumns(shorter, longer []string) bool {
 	if len(shorter) >= len(longer) {
 		return false
@@ -803,6 +816,7 @@ func isPrefixColumns(shorter, longer []string) bool {
 	return true
 }
 
+// extractObjectNameAfterPrefix 从以 prefix 开头的语句中提取紧跟其后的对象名（如视图名、序列名）。
 func extractObjectNameAfterPrefix(sql, prefix string) string {
 	trimmed := strings.TrimSpace(sql)
 	upperTrimmed := strings.ToUpper(trimmed)
@@ -818,6 +832,7 @@ func extractObjectNameAfterPrefix(sql, prefix string) string {
 	return cleanIdentifier(fields[0])
 }
 
+// cleanIdentifier 清洗标识符：去掉首尾空白、反引号/双引号，并取最后的“点号后”部分以剥离 schema 前缀。
 func cleanIdentifier(name string) string {
 	name = strings.TrimSpace(name)
 	name = strings.Trim(name, "`\"")
@@ -827,15 +842,18 @@ func cleanIdentifier(name string) string {
 	return strings.TrimSpace(name)
 }
 
+// isLowerSnake 判断标识符是否符合小写下划线命名规范（如 customer_name）。
 func isLowerSnake(name string) bool {
 	ok, _ := regexp.MatchString(`^[a-z][a-z0-9_]*$`, name)
 	return ok
 }
 
+// isReservedWord 判断标识符是否为数据库保留字（通过预置正则匹配）。
 func isReservedWord(name string) bool {
 	return reReserved.MatchString(strings.ToUpper(strings.TrimSpace(name)))
 }
 
+// stripLineComments 清除 SQL 中的块注释与行注释，返回纯净的语句文本供结构解析使用。
 func stripLineComments(sql string) string {
 	sql = reBlockComment.ReplaceAllString(sql, "")
 
@@ -851,6 +869,7 @@ func stripLineComments(sql string) string {
 	return strings.TrimSpace(strings.Join(out, "\n"))
 }
 
+// newIssue 构造一条 DDL 规范问题，集中赋值行号、严重程度、对象信息与规则键。
 func newIssue(line int, severity DDLRuleSeverity, objectType, objectName, description, suggestion, ruleKey string) DDLIssue {
 	return DDLIssue{
 		Line:        line,

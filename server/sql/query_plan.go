@@ -37,6 +37,7 @@ type QwenRequest struct {
 	Messages []QwenMessage `json:"messages"`
 }
 
+// QwenMessage 对应 OpenAI 兼容格式中的一条对话消息（system/user/assistant）。
 type QwenMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
@@ -54,6 +55,7 @@ type QwenResponse struct {
 	} `json:"error"`
 }
 
+// SqlAuditRecord 表示一条 SQL 执行审计记录，用于落库 SQL 文本、AI 建议与性能评分。
 type SqlAuditRecord struct {
 	UserID         int64  `json:"user_id"`
 	ConnectionName string `json:"connection_name"`

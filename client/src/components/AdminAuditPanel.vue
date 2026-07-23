@@ -1,4 +1,19 @@
 <script setup lang="ts">
+/**
+ * AdminAuditPanel.vue
+ * ------------------------------------------------------------------
+ * 该组件是「管理员 SQL 执行审核」页面。
+ *
+ * 主要功能：
+ * 1. 分页展示 SQL 执行计划审核记录（含 AI 建议、评分、审核状态）。
+ * 2. 按审核状态 / 提交人 / 连接名过滤。
+ * 3. 管理员对提交的 SQL 进行通过 / 驳回，并填写审核备注。
+ *
+ * 关键接口：
+ * - GET  /api/admin/audits          获取审核列表
+ * - PUT  /api/admin/audits/review   提交审核结论（通过/驳回 + 备注）
+ */
+
 import { onMounted, ref } from 'vue'
 
 interface AdminSqlAuditRecord {

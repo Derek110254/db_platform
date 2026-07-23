@@ -1,6 +1,6 @@
 package sql
 
-// checker.go 是 SQL 风险检查模块的核心实现。
+// dml_check.go 是 SQL 风险检查模块的核心实现。
 // 它完成的流程包括：
 // 1. 按语句切分原始 SQL，并保留起始行号，方便定位问题；
 // 2. 进行基础语法层面的静态检查，例如括号、引号、语句结尾等；
@@ -52,6 +52,8 @@ type SyntaxIssue struct {
 	SQL     string `json:"sql"`
 }
 
+// SyntaxCheckResult 语法检查的汇总结果。
+// Valid 为 true 表示未发现语法问题；Errors 汇总所有命中的语法问题供前端展示。
 type SyntaxCheckResult struct {
 	Valid  bool          `json:"valid"`
 	Errors []SyntaxIssue `json:"errors"`
@@ -70,6 +72,8 @@ type RiskRule struct {
 	Suggestion  string
 }
 
+// MatchResult 表示一条命中风险规则的记录。
+// 同时携带行号、规则信息与原始 SQL 片段，便于前端定位与展示。
 type MatchResult struct {
 	StatementNo int      `json:"statementNo"`
 	Line        int      `json:"line"`
@@ -81,6 +85,7 @@ type MatchResult struct {
 	SQL         string   `json:"sql"`
 }
 
+// CheckResponse 是 SQL 风险检查的最终返回结构，供前端一次性渲染语法与风险结果。
 type CheckResponse struct {
 	OK            bool          `json:"ok"`
 	DBType        string        `json:"dbType"`
@@ -479,6 +484,8 @@ func checkSQLSyntaxWithLines(db DBType, rawSQL string, stmts []SQLStatement) Syn
 	}
 }
 
+// isMySQLSelectWithoutFromAllowed 判断 MySQL 下无需 FROM 的 SELECT 是否属于合法场景，
+// 例如 SELECT SLEEP(...)、SELECT 1、SELECT 'a' 等函数或常量查询。
 func isMySQLSelectWithoutFromAllowed(sql string) bool {
 	patterns := []*regexp.Regexp{
 		regexp.MustCompile(`^SELECT\s+SLEEP\s*\(`),
@@ -499,6 +506,8 @@ func isMySQLSelectWithoutFromAllowed(sql string) bool {
 	return false
 }
 
+// findQuoteIssues 逐行扫描原始 SQL，检测单引号未闭合导致的引号不匹配问题。
+// 为避免误报，遇到引号未闭合但下一行已是新语句起始时，视为上一条语句引号不匹配。
 func findQuoteIssues(raw string) []SyntaxIssue {
 	lines := strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n")
 	issues := make([]SyntaxIssue, 0)
@@ -570,6 +579,8 @@ func findQuoteIssues(raw string) []SyntaxIssue {
 	return issues
 }
 
+// looksLikeStatementStart 判断某行（已 trim）是否以 SQL 语句起始关键字开头，
+// 用于在切分或引号恢复时识别新语句的开始。
 func looksLikeStatementStart(trimmed string) bool {
 	if trimmed == "" {
 		return false
@@ -590,10 +601,12 @@ func looksLikeStatementStart(trimmed string) bool {
 	return false
 }
 
+// isWholeLineComment 判断某行是否为整行注释（-- 或 # 起始）。
 func isWholeLineComment(trimmed string) bool {
 	return strings.HasPrefix(trimmed, "--") || strings.HasPrefix(trimmed, "#")
 }
 
+// mergeSyntaxIssues 按“行号+消息+SQL片段”去重，合并重复的语法问题。
 func mergeSyntaxIssues(in []SyntaxIssue) []SyntaxIssue {
 	seen := make(map[string]bool)
 	out := make([]SyntaxIssue, 0, len(in))
@@ -608,6 +621,8 @@ func mergeSyntaxIssues(in []SyntaxIssue) []SyntaxIssue {
 	return out
 }
 
+// isBalanced 判断文本中指定的一对括号（如圆括号）是否配平，
+// 扫描时会跳过单引号字符串内容，避免字符串中的括号干扰计数。
 func isBalanced(s string, left, right rune) bool {
 	count := 0
 	inQuote := false
@@ -643,6 +658,7 @@ func isBalanced(s string, left, right rune) bool {
 	return count == 0
 }
 
+// hasAnyPrefix 判断字符串是否以给定的任意前缀开头，用于识别 SQL 起始关键字。
 func hasAnyPrefix(s string, prefixes ...string) bool {
 	for _, p := range prefixes {
 		if strings.HasPrefix(s, p) {
@@ -711,6 +727,7 @@ func detectRisksByStatement(db DBType, stmts []SQLStatement, rules []RiskRule) (
 	return results, score, calculateRiskLevel(score)
 }
 
+// deduplicateMatches 按“行号+规则ID+SQL片段”去重，避免同一规则在同一处重复命中。
 func deduplicateMatches(in []MatchResult) []MatchResult {
 	seen := map[string]bool{}
 	out := make([]MatchResult, 0, len(in))
@@ -725,6 +742,8 @@ func deduplicateMatches(in []MatchResult) []MatchResult {
 	return out
 }
 
+// severityScore 将风险严重程度映射为分值，用于累计风险总分。
+// 等级越高分值越大，最终由 calculateRiskLevel 汇总为综合等级。
 func severityScore(s Severity) int {
 	switch s {
 	case SeverityCritical:
@@ -738,6 +757,7 @@ func severityScore(s Severity) int {
 	}
 }
 
+// calculateRiskLevel 根据累计风险分值换算为最终风险等级（低/中/高/严重）。
 func calculateRiskLevel(score int) Severity {
 	switch {
 	case score >= 60:
@@ -751,6 +771,7 @@ func calculateRiskLevel(score int) Severity {
 	}
 }
 
+// supportsDB 判断某条风险规则是否适用于当前数据库方言。
 func supportsDB(list []DBType, db DBType) bool {
 	for _, item := range list {
 		if item == db {
@@ -760,6 +781,8 @@ func supportsDB(list []DBType, db DBType) bool {
 	return false
 }
 
+// isQuoteBalancedText 判断文本中的单引号是否配平（即未处于未闭合的单引号字符串中）。
+// 单引号不平衡的语句不参与风险判定，避免误报。
 func isQuoteBalancedText(s string) bool {
 	runes := []rune(s)
 	inQuote := false

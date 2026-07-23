@@ -1,4 +1,23 @@
 <script setup lang="ts">
+/**
+ * AdminDbChangeReleasePanel.vue
+ * ------------------------------------------------------------------
+ * 该组件是「数据库变更发布验证（管理员）」页面。
+ *
+ * 布局模式：list 列表 ↔ form 详情/发布表单。
+ *
+ * 主要功能：
+ * 1. 分页展示变更申请，可按申请团队 / 紧急程度 / 数据库类型 / 是否通过验证筛选。
+ * 2. 详情视图展示申请全部信息 + 变更内容（可一键复制）。
+ * 3. 登记「测试线发布人」「生产线发布人」：点「发布完成」自动填入当前登录用户。
+ * 4. 测试线/生产线均发布后，由申请人侧在变更申请页完成验证。
+ *
+ * 关键接口：
+ * - GET /api/admin/db-change-requests/release  查询发布列表
+ * - PUT /api/admin/db-change-requests/release  登记发布人
+ * - GET /api/auth/me                            取当前登录用户名（用于「发布完成」自动填入）
+ */
+
 import { ref, onMounted, computed } from 'vue'
 import { showToast } from '../utils/toast'
 

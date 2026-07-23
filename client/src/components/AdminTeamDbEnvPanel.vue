@@ -1,4 +1,21 @@
 <script setup lang="ts">
+/**
+ * AdminTeamDbEnvPanel.vue
+ * ------------------------------------------------------------------
+ * 该组件是「团队数据库环境配置（管理员）」页面。
+ *
+ * 布局模式：list 配置列表 ↔ form 新增/编辑。
+ *
+ * 主要功能：
+ * 1. 分页展示各团队（交易/运营/后台/增长等）的测试线、生产线数据库连接信息。
+ * 2. 按团队名过滤 + 关键字搜索（团队名 / 环境名）。
+ * 3. 新增 / 编辑 / 删除环境配置。
+ * 4. 这些配置供「变更申请 / 数据同步申请」页选择环境后自动填入连接信息。
+ *
+ * 关键接口：
+ * - GET/POST/PUT/DELETE /api/admin/team-db-envs
+ */
+
 import { computed, onMounted, ref } from 'vue'
 import { showToast, showConfirm } from '../utils/toast'
 

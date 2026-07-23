@@ -1,4 +1,26 @@
 <script setup lang="ts">
+/**
+ * AdminOpsChangePanel.vue
+ * ------------------------------------------------------------------
+ * 该组件是「运维变更记录」页面。
+ *
+ * 布局模式：list 列表 ↔ view 查看 ↔ form 新增/编辑。
+ *
+ * 主要功能：
+ * 1. 分页展示运维变更记录，按变更类型 / 变更级别过滤（下拉自动响应）。
+ * 2. 申请人新增 / 编辑 / 删除自己的记录（含变更标题、内容、影响范围、变更 IP 列表、回滚计划）。
+ * 3. 三态流转：待复核 → 待变更 → 变更结果（成功/失败）→ 回滚。
+ * 4. 管理员指派复核人、登记变更结果、登记回滚状态；成功自动标记「无需回滚」。
+ * 5. 已完结记录禁止再编辑/删除。
+ *
+ * 关键接口：
+ * - GET    /api/ops-change-records                       用户 CRUD
+ * - GET    /api/admin/ops-change-records                 管理员查询全部
+ * - PUT    /api/admin/ops-change-records/reviewer        指派复核人
+ * - PUT    /api/admin/ops-change-records/result          登记变更结果
+ * - PUT    /api/admin/ops-change-records/rollback        登记回滚状态
+ */
+
 import { computed, onMounted, ref } from 'vue'
 import { showToast, showConfirm } from '../utils/toast'
 
@@ -168,6 +190,8 @@ const confirmReviewer = ref('')
 const confirmResult = ref('成功')
 const confirmRollback = ref('无需回滚')
 
+// 根据当前记录所处状态，决定确认弹窗的步骤：
+// 待复核 → 指派复核人；待变更 → 登记变更结果；失败/部分成功且回滚待确认 → 登记回滚状态
 const confirmStep = computed(() => {
   const item = confirmTargetItem.value
   if (!item) return ''
@@ -177,6 +201,7 @@ const confirmStep = computed(() => {
   return ''
 })
 
+// 判断当前编辑中的记录是否已完结（已登记结果且回滚状态非待确认），完结后禁止编辑/删除
 const isCurrentCompleted = computed(() => {
   const item = records.value.find(r => r.id === form.value.id)
   if (!item) return false

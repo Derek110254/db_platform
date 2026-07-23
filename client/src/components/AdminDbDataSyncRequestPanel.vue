@@ -1,4 +1,23 @@
 <script setup lang="ts">
+/**
+ * AdminDbDataSyncRequestPanel.vue
+ * ------------------------------------------------------------------
+ * 该组件是「数据同步 DBA 执行管理」页面（管理员/DBA 视角）。
+ *
+ * 布局模式：list 列表 ↔ form 详情/执行登记。
+ *
+ * 主要功能：
+ * 1. 分页展示数据同步申请，按申请人 / 操作类型 / 紧急程度筛选（下拉自动响应）。
+ * 2. 详情视图展示申请全部信息（源库/目标、涉及表、过滤条件、脱敏规则等）。
+ * 3. DBA 点「执行完成」自动填入当前用户名作为执行 DBA，完成登记。
+ * 4. 已登记的记录转为只读查看。
+ *
+ * 关键接口：
+ * - GET /api/admin/db-data-sync-requests/dba  查询待执行列表
+ * - PUT /api/admin/db-data-sync-requests/dba  登记执行 DBA
+ * - GET /api/auth/me                          取当前登录用户名
+ */
+
 import { ref, onMounted, computed } from 'vue'
 import { showToast } from '../utils/toast'
 

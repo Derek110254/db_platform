@@ -1,4 +1,18 @@
 <script setup lang="ts">
+/**
+ * LoginDialog.vue
+ * ------------------------------------------------------------------
+ * 该组件是「登录弹窗」，负责 SSO 单点登录接入。
+ *
+ * 主要功能：
+ * 1. 从 SSO 回跳 URL 中提取登录 token（工作证认证）。
+ * 2. 将原始 token 提交后端 /api/sso-login，由后端完成 RSA 加密、调用 SSO 鉴权、
+ *    用户查找与首次登录自动注册，并下发会话。
+ * 3. 从 /api/sso-config 读取 SSO 登录入口地址，供「跳转登录」按钮使用。
+ *
+ * 说明：前端不再做任何 RSA 加密 / SSO API 调用，全部下沉到后端（auth/sso.go）。
+ */
+
 import { ref, onMounted } from 'vue'
 
 const props = defineProps<{

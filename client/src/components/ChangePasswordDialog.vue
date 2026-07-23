@@ -2,7 +2,14 @@
 /**
  * ChangePasswordDialog.vue
  * ------------------------------------------------------------------
- * 首次登录强制修改密码弹窗
+ * 修改密码弹窗。
+ *
+ * 两种触发场景：
+ * 1. 首次登录 / 被管理员重置密码后强制修改（isForce=true，不可取消）。
+ * 2. 用户在菜单中主动修改密码（isForce=false，可取消）。
+ *
+ * 通过 props.visible 控制显隐；前端校验旧密码、新密码、确认密码后，
+ * emit('submit', oldPassword, newPassword) 由父组件请求后端完成修改。
  */
 
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'

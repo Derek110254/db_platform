@@ -1416,8 +1416,26 @@ const scrollToTop = () => {
   <div class="app-layout">
     <!-- 左侧导航栏 -->
     <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
-      <div class="sidebar-brand" v-if="!sidebarCollapsed">SQL 综合管理平台</div>
-      <div class="sidebar-brand" v-else>SQL</div>
+      <div class="sidebar-brand">
+        <svg class="brand-logo" width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="brandLogoBody" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#3b82f6"/>
+              <stop offset="1" stop-color="#1d4ed8"/>
+            </linearGradient>
+            <linearGradient id="brandLogoTop" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#93c5fd"/>
+              <stop offset="1" stop-color="#3b82f6"/>
+            </linearGradient>
+          </defs>
+          <path d="M6 8 L6 24 A10 4 0 0 0 26 24 L26 8 A10 4 0 0 1 6 8 Z" fill="url(#brandLogoBody)"/>
+          <ellipse cx="16" cy="8" rx="10" ry="4" fill="url(#brandLogoTop)"/>
+          <path d="M6 13 A10 4 0 0 0 26 13" fill="none" stroke="#1e3a8a" stroke-width="1" opacity="0.5"/>
+          <path d="M6 18 A10 4 0 0 0 26 18" fill="none" stroke="#1e3a8a" stroke-width="1" opacity="0.5"/>
+          <ellipse cx="16" cy="8" rx="10" ry="4" fill="none" stroke="#bfdbfe" stroke-width="0.8" opacity="0.6"/>
+        </svg>
+        <span v-if="!sidebarCollapsed">SQL 综合管理平台</span>
+      </div>
 
       <nav class="sidebar-nav">
         <div class="nav-group-label" v-if="!sidebarCollapsed">主要功能</div>
@@ -1844,14 +1862,20 @@ const scrollToTop = () => {
 }
 
 .sidebar-brand {
-  padding: 16px;
-  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  font-size: 15px;
   font-weight: bold;
   color: #fff;
-  text-align: center;
   border-bottom: 1px solid #374151;
   white-space: nowrap;
   overflow: hidden;
+}
+.sidebar-brand .brand-logo {
+  flex-shrink: 0;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25));
 }
 
 .sidebar-nav {

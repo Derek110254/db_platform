@@ -1,6 +1,6 @@
 # sql_platform SQL管理平台
 
-基于 Go (Gin) 和 Vue 3 构建的轻量级、安全且易于使用的 SQL 管理与审计平台。提供 SQL 风险检测、查询执行、执行计划分析、数据库变更审批、运维变更记录等功能，内置 SSO 单点登录和细粒度的访问控制。
+基于 Go (Gin) 和 Vue 3 构建的轻量级、安全且易于使用的 SQL 管理与审计平台。提供 SQL 风险检测、查询执行、执行计划分析、数据库变更审批、运维变更记录、工作看板统计等功能，内置 SSO 单点登录和细粒度的访问控制。
 
 ## 核心功能
 
@@ -48,6 +48,11 @@
 - **7 种告警分类：** SQL性能、空间扩容、配置优化、可用性故障、锁与阻塞、备份恢复、硬件不足。
 - **三态列表：** 列表/查看/登记三个视图，双击行直接进入查看。
 
+### 工作看板与统计
+
+- **年度工作看板：** 展示选定年度的统计卡片（SQL 审核、变更申请、数据同步、告警处理、运维变更等数量）、月度趋势、各分类分布和工作量排行榜。
+- **个人看板（管理员）：** 展示当前用户的工作量卡片（作为申请人/处理人/操作人/审核人）和待办事项，双击待办卡片可快速跳转到对应管理页面。
+
 ### 团队数据库环境
 
 - **环境配置：** 按团队配置数据库环境映射（测试线/生产线 IP、库名、Schema）。
@@ -85,7 +90,7 @@
 - **构建工具：** Vite (自动清空输出目录)
 - **代码编辑器：** CodeMirror 6 (SQL 语法高亮与自动补全)
 - **字体：** 全局使用 Consolas/Monaco 等宽字体
-- **样式：** 原生 CSS + Vue scoped
+- **样式：** 原生 CSS（`global.css` 统一公共样式 + Vue scoped 组件样式），Zabbix 5 风格侧边栏 + 面包屑布局
 
 ## 数据库表
 
@@ -112,6 +117,7 @@ sql_platform/
 │   │   ├── App.vue                  # 主入口（路由/导航/权限控制）
 │   │   └── components/
 │   │       ├── HomePanel.vue             # 首页（DML/DDL 检测、格式化）
+│   │       ├── DashboardPanel.vue       # 工作看板（年度统计）
 │   │       ├── QueryPanel.vue            # 查询工作台
 │   │       ├── QueryPlanPanel.vue        # 执行计划查询与 AI 解读
 │   │       ├── MetadataPanel.vue         # 表/列元数据侧边栏
@@ -123,6 +129,7 @@ sql_platform/
 │   │       ├── DbDataSyncRequestPanel.vue# 数据同步申请
 │   │       ├── AuditHistoryPanel.vue     # 审核历史
 │   │       ├── AdminUserPanel.vue        # [管理] 用户管理
+│   │       ├── PersonalDashboardPanel.vue # [管理] 个人看板
 │   │       ├── AdminConnectionPanel.vue  # [管理] 连接配置
 │   │       ├── AdminAuditPanel.vue       # [管理] SQL 审核
 │   │       ├── AdminDbChangeReleasePanel.vue # [管理] 变更发布
@@ -134,7 +141,7 @@ sql_platform/
 │   └── vite.config.ts
 ├── server/                          # Go 后端工程
 │   ├── auth/                        # 认证、鉴权、表结构初始化
-│   │   ├── session.go               # 登录/会话/连接管理/表初始化
+│   │   ├── session.go               # 登录/会话/用户连接权限映射/表初始化
 │   │   └── sso.go                   # SSO 验证（RSA 加密 + API 调用）
 │   ├── config/
 │   │   └── platform_db.go           # 全局配置（数据库、AI Key、SSO 配置）
@@ -143,18 +150,22 @@ sql_platform/
 │   ├── routes/
 │   │   ├── api.go                   # 所有 API 路由与 handler
 │   │   └── web.go                   # 前端静态资源托管 (SPA fallback)
-│   ├── sql/                         # SQL 核心引擎
-│   │   ├── checker.go               # SQL 风险检测
-│   │   ├── ddl_checker.go           # DDL 规范检查
-│   │   ├── query_executor.go        # 查询执行（行数限制）
-│   │   ├── query_plan.go            # 执行计划 + AI 解读 + 手动提交
-│   │   ├── query_metadata.go        # 元数据查询
-│   │   ├── sql_favorite.go          # SQL 收藏 CRUD
+│   ├── sql/                         # SQL 核心引擎（按业务域拆分，HTTP handler 在 routes/api.go 委托调用）
+│   │   ├── connection.go            # 数据库连接配置管理 CRUD（含改名级联）
+│   │   ├── dml_check.go            # SQL 风险检测
+│   │   ├── dashboard.go             # 年度工作量看板统计
+│   │   ├── db_alert_handle.go       # 告警处理 CRUD
 │   │   ├── db_change_request.go     # 变更申请 CRUD + 验证流程
 │   │   ├── db_data_sync_request.go  # 数据同步 CRUD
-│   │   ├── db_alert_handle.go       # 告警处理 CRUD
+│   │   ├── ddl_checker.go           # DDL 规范检查
 │   │   ├── ops_change_record.go     # 运维变更记录 CRUD + 流程
-│   │   └── team_db_env.go           # 团队数据库环境 CRUD
+│   │   ├── personal_dashboard.go    # 个人看板统计
+│   │   ├── query_executor.go        # 查询执行（行数限制）
+│   │   ├── query_metadata.go        # 元数据查询
+│   │   ├── query_plan.go            # 执行计划 + AI 解读 + 手动提交
+│   │   ├── sql_favorite.go          # SQL 收藏 CRUD
+│   │   ├── team_db_env.go           # 团队数据库环境 CRUD
+│   │   └── user.go                  # 用户管理 CRUD（密码/连接权限）
 │   ├── web/dist/                    # 编译后的前端（embed 嵌入）
 │   ├── main.go
 │   └── go.mod
@@ -203,10 +214,10 @@ const (
 ```bash
 cd client
 npm install
-npm run build-only
+npm run build
 ```
 
-Vite 会自动清空输出目录，编译结果输出到 `server/web/dist`。
+Vite 会自动清空输出目录（`emptyOutDir`），编译结果输出到 `server/web/dist`。
 
 ### 4. 运行后端
 

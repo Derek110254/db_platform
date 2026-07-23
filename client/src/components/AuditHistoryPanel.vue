@@ -1,4 +1,17 @@
 <script setup lang="ts">
+/**
+ * AuditHistoryPanel.vue
+ * ------------------------------------------------------------------
+ * 该组件是「我的 SQL 审核历史」页面。
+ *
+ * 主要功能：
+ * 1. 分页展示当前登录用户提交的 SQL 执行计划审核记录（含执行计划、AI 建议、评分、审核结论）。
+ * 2. 按 SQL 文本关键字搜索。
+ *
+ * 关键接口：
+ * - GET /api/audit-history  查询当前用户的审核历史
+ */
+
 import { onMounted, ref } from 'vue'
 
 interface SqlAuditHistoryRecord {

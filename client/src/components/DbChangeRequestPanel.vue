@@ -1,4 +1,25 @@
 <script setup lang="ts">
+/**
+ * DbChangeRequestPanel.vue
+ * ------------------------------------------------------------------
+ * 该组件是「数据库变更申请」页面（申请人视角）。
+ *
+ * 布局模式：list 列表 ↔ view 查看 ↔ form 新建/编辑。
+ *
+ * 主要功能：
+ * 1. 分页展示自己提交的变更申请，按申请团队 / 紧急程度 / 数据库类型筛选（下拉自动响应）。
+ * 2. 新建 / 编辑 / 删除申请；支持克隆已有申请快速复用。
+ * 3. 变更类型 / 数据库类型为多选；按所选类型动态显隐测试线/生产线实例、Schema 等字段。
+ * 4. 选择「团队 + 环境」后自动填入测试线/生产线连接信息（来自团队环境配置）。
+ * 5. 支持 .sql/.txt 文件上传、变更内容一键复制；数据修改类变更必填备份表。
+ * 6. 三态流转：待发布 → 发布后「去验证」 → 申请人确认「已验证」后完结，不可再改。
+ *
+ * 关键接口：
+ * - GET/POST/PUT/DELETE /api/db-change-requests
+ * - PUT /api/db-change-requests/verify   申请人验证发布结果
+ * - GET /api/team-db-envs                团队环境配置（用于自动填入连接信息）
+ */
+
 import { ref, onMounted, computed } from 'vue'
 import { showToast, showConfirm } from '../utils/toast'
 
@@ -152,14 +173,17 @@ const totalPages = computed(() => {
   return Math.ceil(totalCount.value / pageSize.value)
 })
 
+// 判断是否已发布：测试线与生产线发布人均已登记才算发布完成
 const isReleased = (item: DBChangeRequest) => {
   return !!(item.testPublisher && item.prodPublisher)
 }
 
+// 判断是否已验证：已发布且申请人已确认发布结果正常（releaseVerifier 已置位）
 const isVerified = (item: DBChangeRequest) => {
   return isReleased(item) && !!item.releaseVerifier
 }
 
+// 变更类型包含「数据修改」时，备份表为必填项
 const isDataChange = computed(() => editForm.value.changeType.includes('数据修改'))
 
 const loadData = async () => {

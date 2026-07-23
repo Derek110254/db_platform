@@ -1,4 +1,18 @@
 <script setup lang="ts">
+/**
+ * PersonalDashboardPanel.vue
+ * ------------------------------------------------------------------
+ * 该组件是「个人看板」页面。
+ *
+ * 主要功能：
+ * 1. 展示当前登录用户的工作量卡片（作为申请人 / 处理人 / 操作人 / 审核人的各类数量）。
+ * 2. 展示待办事项（待发布变更、待验证变更、待执行数据同步、待复核运维变更、待审核 SQL 等）。
+ * 3. 双击待办卡片可跳转到对应管理页面（通过 emit('navigate') 通知父组件路由切换）。
+ *
+ * 关键接口：
+ * - GET /api/dashboard/personal  获取个人看板数据
+ */
+
 import { onMounted, ref, computed } from 'vue'
 
 const emit = defineEmits<{
