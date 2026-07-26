@@ -1,10 +1,10 @@
-![登录页面截图](./images/login.jpg)
+![登录页面截图](./server/images/login.jpg)
 
-![查询页面截图](./images/query.jpg)
+![查询页面截图](./server/images/query.jpg)
 
-![连接页面截图](./images/connect.jpg)
+![连接页面截图](./server/images/connect.jpg)
 
-![用户页面截图](./images/user.jpg)
+![用户页面截图](./server/images/user.jpg)
 
 # 数据库查询平台
 
