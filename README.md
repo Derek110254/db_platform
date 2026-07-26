@@ -132,6 +132,7 @@ db_platform/
 ### 1. 初始化数据库
 
 ```bash
+调整加密函数fixed_aes_encrypt，fixed_aes_decrypt中的32位密钥，以及管理员admin的默认密码
 mysql -u root -p < init.sql
 ```
 

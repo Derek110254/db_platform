@@ -1,3 +1,2 @@
-server/config/platform_db.go
-server/logs/access.log
+server/logs/*
 server/tmp/*
