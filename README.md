@@ -1,3 +1,11 @@
+![登录页面截图](./images/login.jpg)
+
+![查询页面截图](./images/query.jpg)
+
+![连接页面截图](./images/connect.jpg)
+
+![用户页面截图](./images/user.jpg)
+
 # 数据库查询平台
 
 基于 Go (Gin) 和 Vue 3 构建的轻量级数据库查询平台，面向受控的只读 SQL 查询场景。平台只保留用户认证、用户权限、数据库连接管理、查询工作台、元数据浏览、查询历史、Excel 导出和 SQL 收藏夹。
