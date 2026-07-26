@@ -1,5 +1,3 @@
 server/config/platform_db.go
-server/sql_platform
-server/tmp.exe
 server/logs/access.log
 server/tmp/*

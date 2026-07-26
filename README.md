@@ -1,185 +1,125 @@
-# sql_platform SQL管理平台
+# 数据库查询平台
 
-基于 Go (Gin) 和 Vue 3 构建的轻量级、安全且易于使用的 SQL 管理与审计平台。提供 SQL 风险检测、查询执行、执行计划分析、数据库变更审批、运维变更记录、工作看板统计等功能，内置 SSO 单点登录和细粒度的访问控制。
+基于 Go (Gin) 和 Vue 3 构建的轻量级数据库查询平台，面向受控的只读 SQL 查询场景。平台只保留用户认证、用户权限、数据库连接管理、查询工作台、元数据浏览、查询历史、Excel 导出和 SQL 收藏夹。
 
-## 核心功能
+## 功能
 
-### SQL 检测与格式化
+### 用户认证
 
-- **DML 风险静态检测：** 在执行前对 SQL 语句进行风险规则匹配分析（缺少 WHERE、全表扫描等），对高风险操作预警。
-- **DDL 规范检查：** 对 DDL 语句进行规范性检测，确保建表、修改表等操作符合标准。
-- **SQL 格式化：** 内置 SQL 格式化工具，一键美化。
-- **SQL/DDL 文件上传分析：** 支持上传 SQL 文件进行批量检测。
+- 账号密码登录
+- 退出登录
+- 获取当前登录用户
+- 修改密码
+- 首次登录强制改密
+- 首次打开页面先校验会话，未登录或会话失效时统一显示固定登录页
 
-### 安全查询
+### 用户与权限
 
-- **多数据库支持：** MySQL 和 Oracle。
-- **严格只读控制：** 仅允许 `SELECT`/`WITH`，代码层面拦截所有写操作。
-- **行数限制：** 数据库执行层限制最多返回 500 行。
-- **执行计划解读 (EXPLAIN)：** 集成 EXPLAIN 命令，支持 AI 智能解读（DML/DQL 均可检测，DDL 不支持）。
-- **手动提交执行计划：** 对于网络不可达的数据库（`can_connect=0`），用户可手动粘贴 EXPLAIN 输出进行 AI 分析。
-- **表/列元数据浏览：** 实时关键字过滤表和字段，点击快捷插入 SQL 编辑器。
-- **查询历史：** 侧边栏展示历史记录，支持回填和删除。
-- **数据导出：** 导出为 Excel (.xlsx)，解决长数字科学计数法失真。
-- **SQL 收藏夹：** 保存常用 SQL，支持新增（仅表单）和查看列表（使用/编辑/删除）两种模式。
+- 管理员维护用户
+- 支持 `admin` / `user` 角色
+- 管理员为普通用户分配可访问的数据库连接
+- 普通用户只能看到并查询已授权连接
 
-### 数据库变更管理
+### 数据库连接管理
 
-- **变更申请：** 用户提交变更申请（团队、环境、变更类型、变更内容、备份表、回滚方案等）。
-- **变更审批流程：** 创建 → 待复核 → 复核人复核 → 待变更 → 确认变更结果(成功/失败) → 失败则确认回滚 → 彻底完结。
-- **已完结保护：** 变更结果确认后不可编辑、不可删除。
-- **SQL 审核提交：** 用户提交 SQL 进行 AI 评分，管理员人工二次复核，审核记录包含执行计划。
-- **审核历史：** 用户查看自己的审核记录及审批状态。
+- 管理员配置 MySQL / Oracle / PostgreSQL / MSSQL 连接
+- Oracle 连接填写服务名，可选填写 schema 名
+- PostgreSQL 连接填写数据库名，可选填写 schema 名
+- MSSQL 连接方式与 MySQL 一样，填写数据库名即可
+- 支持连接新增、编辑、删除
+- 支持连接测试
+- 支持启用/禁用连接
+- 支持 `can_connect` 标记，不可连接的库不允许查询
 
-### 数据同步管理
+### 查询工作台
 
-- **同步申请：** 用户提交数据同步申请（源/目标库、过滤条件、预估数据量、敏感数据规则等）。
-- **同步审批：** 管理员审批，指定 DBA 执行人。
+- 只允许执行 `SELECT` / `WITH` 开头的查询
+- 禁止多语句执行
+- 查询层最多返回 500 行
+- 支持 MySQL / Oracle / PostgreSQL / MSSQL
+- 支持 SQL 关键字、元数据和表别名字段提示
+- 支持 `Ctrl + Enter` 执行查询和一键清空编辑器
+- 查询结果在编辑器与元数据区域下方全宽展示，可调整高度、隐藏或最大化
+- 每页支持显示 20 / 50 / 100 行
+- 支持 Excel `.xlsx` 导出
 
-### 运维变更记录
+### 元数据与辅助能力
 
-- **变更登记：** 记录运维变更的完整信息（标题、类型、等级、内容、影响范围、变更IP、回滚方案等）。
-- **流程化管理：** 待复核 → 复核人确认 → 待变更 → 确认变更结果 → 失败则确认回滚 → 完结。
-- **9 种变更类型：** 安装部署、配置变更、服务重启、版本升级、数据修复、性能优化、容量变更、应急变更、其他。
+- 浏览表和字段元数据
+- 根据关键字查询表名、字段名和注释
+- 点击表名/字段名插入 SQL 编辑区
+- 右侧元数据栏支持折叠，并记住用户最后一次折叠状态
+- 查询历史按登录用户保存在浏览器 `localStorage`，仅保留最近 20 条有返回数据的记录
+- SQL 收藏夹支持保存、编辑、删除和复用
+- 查询历史可一键加入 SQL 收藏夹
 
-### 数据库告警处理
+## 安全边界
 
-- **告警登记：** 记录告警内容、影响范围、处理过程与结果。
-- **7 种告警分类：** SQL性能、空间扩容、配置优化、可用性故障、锁与阻塞、备份恢复、硬件不足。
-- **三态列表：** 列表/查看/登记三个视图，双击行直接进入查看。
-
-### 工作看板与统计
-
-- **年度工作看板：** 展示选定年度的统计卡片（SQL 审核、变更申请、数据同步、告警处理、运维变更等数量）、月度趋势、各分类分布和工作量排行榜。
-- **个人看板（管理员）：** 展示当前用户的工作量卡片（作为申请人/处理人/操作人/审核人）和待办事项，双击待办卡片可快速跳转到对应管理页面。
-
-### 团队数据库环境
-
-- **环境配置：** 按团队配置数据库环境映射（测试线/生产线 IP、库名、Schema）。
-- **快速引用：** 用户提交变更申请时可直接选择环境自动填入。
-
-### 认证与安全
-
-- **SSO 工作证认证：** 集成企业 SSO，RSA 加密 + SSO API 验证全在后端完成，公钥和 API 地址不暴露给前端。
-- **自动注册：** SSO 首次登录自动创建用户（role=user，默认开启查询权限）。
-- **首次登录强制改密：** 账密登录的新用户首次登录时强制修改密码。
-- **操作审计日志：** 记录每一次查询的执行者、目标数据库、SQL 指纹及执行耗时。
-- **连接测试：** 保存连接配置时先测 TCP 端口连通性，端口不通可强制保存；密码错误不可保存。修改连接名称时事务级联更新所有关联表。
-
-### 权限与管理
-
-- **角色隔离：** admin / user 角色隔离。
-- **连接权限：** 管理员配置连接，按用户授权，普通用户只看自己的。
-- **可连接标记：** 连接配置 `can_connect` 字段，不可连接的库在查询页和检测页显示提示、禁用操作按钮。
-- **用户管理：** 创建/编辑/删除用户，分配角色和权限。
-- **团队环境管理：** 配置团队数据库环境，支持实时搜索。
+- 查询、元数据、Excel 导出和收藏接口必须登录后访问
+- 用户只能使用管理员分配的数据库连接；管理员可以使用全部启用连接
+- 服务端只接受单条 `SELECT` / `WITH` 查询，并统一限制最多返回 500 行
+- 应用层阻止显式跨范围查询：MySQL 跨数据库、PostgreSQL/Oracle 跨 schema、MSSQL 跨数据库和 linked server
+- schema、`search_path` 和默认数据库不是数据库权限边界，目标数据库账号仍必须遵循最小权限原则
+- 建议每个连接使用专用只读账号，只授予目标库/schema 的对象查询权限，不要配置 root、SYS、sa 或其他高权限账号
+- API 响应使用 `Cache-Control: no-store`，避免退出后浏览器复用旧的认证或业务数据
 
 ## 技术栈
 
-### 后端 (Server)
-- **语言：** Go 1.20+
-- **框架：** Gin
-- **数据库驱动：** `go-sql-driver/mysql` (MySQL)、`sijms/go-ora/v2` (Oracle)
-- **AI 接口：** OpenAI 兼容的 chat/completions 格式
-- **加密：** `crypto/rsa` (SSO token 加密)、MySQL `fixed_aes_encrypt/decrypt` (密码存储)
-- **前端嵌入：** Go `embed` 嵌入前端静态资源，编译为单一二进制
+### 后端
 
-### 前端 (Client)
-- **框架：** Vue 3 (Composition API, `<script setup>`)
-- **语言：** TypeScript
-- **构建工具：** Vite (自动清空输出目录)
-- **代码编辑器：** CodeMirror 6 (SQL 语法高亮与自动补全)
-- **字体：** 全局使用 Consolas/Monaco 等宽字体
-- **样式：** 原生 CSS（`global.css` 统一公共样式 + Vue scoped 组件样式），Zabbix 5 风格侧边栏 + 面包屑布局
+- Go
+- Gin
+- MySQL 管控库
+- MySQL 查询驱动：`go-sql-driver/mysql`
+- Oracle 查询驱动：`sijms/go-ora/v2`
+- PostgreSQL 查询驱动：`lib/pq`
+- MSSQL 查询驱动：`go-mssqldb`
+- Excel 导出：`xuri/excelize`
+- 前端静态资源通过 Go `embed` 嵌入
+
+### 前端
+
+- Vue 3
+- TypeScript
+- Vite
+- CodeMirror 6
+- Lucide 图标
+- 原生 CSS
 
 ## 数据库表
 
-| 表名 | 说明 |
-|------|------|
-| `platform_user` | 平台用户表 |
-| `platform_session` | 登录会话表 |
-| `platform_db_connection` | 数据库连接配置表 |
-| `platform_user_db_connection` | 用户-连接权限关系表 |
-| `platform_sql_favorite` | SQL 收藏表 |
-| `platform_sql_audit` | SQL AI 审核记录表（含执行计划） |
-| `platform_db_change_request` | 数据库变更申请表 |
-| `platform_team_db_env` | 团队数据库环境配置表 |
-| `platform_db_data_sync_request` | 数据库数据同步申请表 |
-| `platform_db_alert_handle` | 数据库告警处理表 |
-| `platform_ops_change_record` | 运维变更记录表 |
+| 表名                 | 说明                 |
+| -------------------- | -------------------- |
+| `user`               | 平台用户表           |
+| `session`            | 登录会话表           |
+| `db_connection`      | 数据库连接配置表     |
+| `user_db_connection` | 用户与连接权限关系表 |
+| `sql_favorite`       | SQL 收藏表           |
 
 ## 目录结构
 
 ```text
-sql_platform/
-├── client/                          # Vue 3 前端工程
+db_platform/
+├── client/                    # Vue 前端
 │   ├── src/
-│   │   ├── App.vue                  # 主入口（路由/导航/权限控制）
-│   │   └── components/
-│   │       ├── HomePanel.vue             # 首页（DML/DDL 检测、格式化）
-│   │       ├── DashboardPanel.vue       # 工作看板（年度统计）
-│   │       ├── QueryPanel.vue            # 查询工作台
-│   │       ├── QueryPlanPanel.vue        # 执行计划查询与 AI 解读
-│   │       ├── MetadataPanel.vue         # 表/列元数据侧边栏
-│   │       ├── QueryHistoryPanel.vue     # 查询历史侧边栏
-│   │       ├── SqlFavoritePanel.vue      # SQL 收藏（新增/列表双模式）
-│   │       ├── LoginDialog.vue           # SSO 登录（后端代理验证）
-│   │       ├── ChangePasswordDialog.vue  # 修改密码
-│   │       ├── DbChangeRequestPanel.vue  # 数据库变更申请
-│   │       ├── DbDataSyncRequestPanel.vue# 数据同步申请
-│   │       ├── AuditHistoryPanel.vue     # 审核历史
-│   │       ├── AdminUserPanel.vue        # [管理] 用户管理
-│   │       ├── PersonalDashboardPanel.vue # [管理] 个人看板
-│   │       ├── AdminConnectionPanel.vue  # [管理] 连接配置
-│   │       ├── AdminAuditPanel.vue       # [管理] SQL 审核
-│   │       ├── AdminDbChangeReleasePanel.vue # [管理] 变更发布
-│   │       ├── AdminDbDataSyncRequestPanel.vue # [管理] 数据同步审批
-│   │       ├── AdminTeamDbEnvPanel.vue   # [管理] 团队数据库环境
-│   │       ├── AdminDbAlertHandlePanel.vue # [管理] 数据库告警处理
-│   │       └── AdminOpsChangePanel.vue   # [管理] 运维变更记录
+│   │   ├── App.vue            # 查询平台单页应用
+│   │   └── main.ts            # 前端入口
 │   ├── package.json
 │   └── vite.config.ts
-├── server/                          # Go 后端工程
-│   ├── auth/                        # 认证、鉴权、表结构初始化
-│   │   ├── session.go               # 登录/会话/用户连接权限映射/表初始化
-│   │   └── sso.go                   # SSO 验证（RSA 加密 + API 调用）
-│   ├── config/
-│   │   └── platform_db.go           # 全局配置（数据库、AI Key、SSO 配置）
-│   ├── middleware/
-│   │   └── auth.go                  # RequireLogin / RequireAdmin 中间件
-│   ├── routes/
-│   │   ├── api.go                   # 所有 API 路由与 handler
-│   │   └── web.go                   # 前端静态资源托管 (SPA fallback)
-│   ├── sql/                         # SQL 核心引擎（按业务域拆分，HTTP handler 在 routes/api.go 委托调用）
-│   │   ├── connection.go            # 数据库连接配置管理 CRUD（含改名级联）
-│   │   ├── dml_check.go            # SQL 风险检测
-│   │   ├── dashboard.go             # 年度工作量看板统计
-│   │   ├── db_alert_handle.go       # 告警处理 CRUD
-│   │   ├── db_change_request.go     # 变更申请 CRUD + 验证流程
-│   │   ├── db_data_sync_request.go  # 数据同步 CRUD
-│   │   ├── ddl_checker.go           # DDL 规范检查
-│   │   ├── ops_change_record.go     # 运维变更记录 CRUD + 流程
-│   │   ├── personal_dashboard.go    # 个人看板统计
-│   │   ├── query_executor.go        # 查询执行（行数限制）
-│   │   ├── query_metadata.go        # 元数据查询
-│   │   ├── query_plan.go            # 执行计划 + AI 解读 + 手动提交
-│   │   ├── sql_favorite.go          # SQL 收藏 CRUD
-│   │   ├── team_db_env.go           # 团队数据库环境 CRUD
-│   │   └── user.go                  # 用户管理 CRUD（密码/连接权限）
-│   ├── web/dist/                    # 编译后的前端（embed 嵌入）
+├── server/                    # Go 后端
+│   ├── auth/                  # 登录会话与鉴权中间件
+│   ├── config/                # 管控库配置
+│   ├── routes/                # API 与静态资源路由
+│   ├── sql/                   # 查询、连接、用户、收藏业务逻辑
+│   ├── web/dist/              # 前端构建产物
+│   ├── logs/                  # 默认访问日志目录，首次启动时自动创建
 │   ├── main.go
 │   └── go.mod
-├── init.sql                         # 数据库初始化脚本
+├── init.sql                   # 初始化 SQL
 └── README.md
 ```
 
-## 本地运行指南
-
-### 环境依赖
-
-- Go 1.20+
-- Node.js v20+
-- MySQL 5.7+
+## 本地运行
 
 ### 1. 初始化数据库
 
@@ -189,23 +129,15 @@ mysql -u root -p < init.sql
 
 ### 2. 配置后端
 
-修改 `server/config/platform_db.go` 中的配置：
+修改 `server/config/platform_db.go` 中的管控库连接配置：
 
 ```go
 const (
-    PlatformDBHost = "你的数据库IP"
-    PlatformDBPort = 3306
-    PlatformDBUser = "db_platform"
+    PlatformDBHost     = "你的数据库IP"
+    PlatformDBPort     = 3306
+    PlatformDBUser     = "db_platform"
     PlatformDBPassword = "你的密码"
-    PlatformDBName = "db_platform"
-
-    QwenAPIKey = "你的AI API Key"  // AI 性能分析用
-
-    // SSO 配置
-    SSOGzzApiUrl = "http://SSO接口地址/qhgzz/authority/isLogin"
-    SSOLoginUrl  = "http://SSO登录页地址"
-    SSOPublicKey = "RSA公钥"
-    SSOUrlId     = "1577"
+    PlatformDBName     = "db_platform"
 )
 ```
 
@@ -217,27 +149,75 @@ npm install
 npm run build
 ```
 
-Vite 会自动清空输出目录（`emptyOutDir`），编译结果输出到 `server/web/dist`。
+构建结果会输出到 `server/web/dist`。
 
 ### 4. 运行后端
 
 ```bash
 cd server
-go mod tidy
-go run main.go
+go run .
 ```
 
-默认端口 `2345`，访问 `http://localhost:2345`。
+默认端口为 `1520`，访问 `http://localhost:1520`。
 
-### 默认管理员
+可通过环境变量修改端口：
+
+```bash
+PORT=8080 go run .
+```
+
+### 5. 编译后端
+
+Linux / macOS：
+
+```bash
+cd server
+go build -o db-platform .
+./db-platform
+```
+
+Windows PowerShell：
+
+```powershell
+cd server
+go build -o db-platform.exe .
+./db-platform.exe
+```
+
+前端资源通过 Go `embed` 编译进可执行文件，因此修改前端后需要先执行 `npm run build`，再重新编译后端。
+
+## 访问日志
+
+- 程序启动时会自动创建默认目录 `logs` 和当天文件，例如 `logs/access-2026-07-26.log`，无需提前手工创建
+- 默认路径相对于程序启动时的工作目录；生产环境可使用 `LOG_DIR` 指定固定日志目录
+- 如果目录不存在会递归创建；如果目录不可写，程序会在启动阶段直接报错
+- 仅记录 `/api/` 请求的时间、客户端 IP、方法、路径、状态码、耗时和 User-Agent，不记录请求体及密码
+- 按本地日期每天写入一个文件；服务跨过午夜后会自动切换，不需要重启
+- 每次启动和日期切换时会清理超过 14 天的访问日志
+
+Linux / macOS 指定日志目录：
+
+```bash
+LOG_DIR=/var/log/db-platform ./db-platform
+```
+
+Windows PowerShell 指定日志目录：
+
+```powershell
+$env:LOG_DIR = "D:\\db-platform-logs"
+./db-platform.exe
+```
+
+## 默认管理员
 
 - 用户名：`admin`
-- 密码：`Admin@123`
+- 密码：`Admin`
 
-## 安全性说明
+首次部署后请立即修改默认管理员密码。
 
-- **SQL 注入防范：** 正则过滤 DML，安全嵌套策略封堵注释绕过。
-- **连接测试：** 保存前先测 TCP 端口（3 秒超时），端口不通可强制保存，密码错误不可保存。
-- **敏感信息保护：** 数据库密码加密存储，SSO 公钥/API 地址仅在后端，不暴露给前端。
-- **可追溯性：** 所有查询操作记录审计日志，`access.log` 记录 HTTP 请求。
-- **已完结保护：** 运维变更记录完结后不可编辑/删除。
+## 验证
+
+```bash
+cd client && npm run build
+cd server && go test ./...
+```

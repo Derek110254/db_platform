@@ -8,33 +8,26 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
-	"sql_platform/server/auth"
-	"sql_platform/server/routes"
+	"db_platform/server/auth"
+	"db_platform/server/routes"
 
 	"github.com/gin-gonic/gin"
-	"gopkg.in/natefinch/lumberjack.v2" // 新增的日志轮转库
 )
 
 //go:embed web/dist/**
 var dist embed.FS
 
-// main
-// ------------------------------------------------------------
-// 程序入口：
-// 1. 初始化平台认证库表结构；
-// 2. 初始化 Gin；
-// 3. 注册日志；
-// 4. 注册 API 路由；
-// 5. 注册前端静态页面。
+// main 是服务端入口。
+// 启动流程：清理过期会话、初始化 Gin、注册访问日志、注册 API、挂载前端静态资源。
 func main() {
-	// 初始化认证与连接配置表。
-	if err := auth.EnsureSchema(); err != nil {
-		panic(fmt.Sprintf("初始化认证数据库失败: %v", err))
+	if err := auth.DeleteExpiredSessions(); err != nil {
+		panic(fmt.Sprintf("清理过期会话失败: %v", err))
 	}
 
-	// 初始化访问日志记录器
 	accessLogger, accessLogWriter, err := newAccessLogger()
 	if err != nil {
 		panic(err)
@@ -42,20 +35,12 @@ func main() {
 	defer accessLogWriter.Close()
 
 	r := gin.New()
-
-	// 恢复中间件，防止 panic 直接导致进程退出
 	r.Use(gin.Recovery())
-
-	// 控制台日志
 	r.Use(gin.Logger())
-
-	// 写 access.log 的访问日志中间件
 	r.Use(accessLogMiddleware(accessLogger))
 
-	// 注册后端 API
 	routes.RegisterAPIRoutes(r)
 
-	// 注册前端页面
 	distFS, err := fs.Sub(dist, "web/dist")
 	if err != nil {
 		panic(err)
@@ -64,7 +49,7 @@ func main() {
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "2345"
+		port = "1520"
 	}
 
 	if err := r.Run(":" + port); err != nil {
@@ -72,65 +57,138 @@ func main() {
 	}
 }
 
-// newAccessLogger
-// ------------------------------------------------------------
-// 创建访问日志记录器，支持按天轮转和保留 14 天。
-// 日志文件路径：logs/access.log
+const (
+	accessLogDateLayout    = "2006-01-02"
+	accessLogRetentionDays = 14
+)
+
+// dailyAccessLogWriter 按本地日期将日志写入 access-YYYY-MM-DD.log。
+// 每次写入前都会检查日期，因此服务跨过午夜后无需重启即可切换文件。
+type dailyAccessLogWriter struct {
+	mu      sync.Mutex
+	logDir  string
+	date    string
+	file    *os.File
+	nowFunc func() time.Time
+}
+
+// newAccessLogger 创建 API 访问日志记录器。
+// 启动时会自动创建日志目录和当天文件，并提前验证目标路径是否可写。
 func newAccessLogger() (*log.Logger, io.WriteCloser, error) {
-	logDir := "logs"
+	logDir := strings.TrimSpace(os.Getenv("LOG_DIR"))
+	if logDir == "" {
+		logDir = "logs"
+	}
 	if err := os.MkdirAll(logDir, 0755); err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("创建日志目录失败: %w", err)
 	}
 
-	logPath := filepath.Join(logDir, "access.log")
-
-	// 引入 lumberjack 实现日志按天轮转与清理
-	logWriter := &lumberjack.Logger{
-		Filename:   logPath,
-		MaxSize:    100,  // 单个日志文件最大尺寸（MB），达到 100MB 也会触发切割
-		MaxAge:     14,   // 保留旧文件的最大天数（保留 14 天）
-		MaxBackups: 0,    // 保留的最大旧文件数量（0 表示仅靠 MaxAge 控制，不限制个数）
-		LocalTime:  true, // 备份文件名使用本地时间
-		Compress:   true, // 压缩旧的日志文件（推荐开启，节省磁盘空间）
+	logWriter, err := newDailyAccessLogWriter(logDir, time.Now)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	logger := log.New(logWriter, "", 0)
 	return logger, logWriter, nil
 }
 
-// accessLogMiddleware
-// ------------------------------------------------------------
-// 记录接口访问日志。
-// 只记录 /api/ 开头的访问，便于排查接口调用问题。
+func newDailyAccessLogWriter(logDir string, nowFunc func() time.Time) (*dailyAccessLogWriter, error) {
+	writer := &dailyAccessLogWriter{logDir: logDir, nowFunc: nowFunc}
+	if err := writer.rotateIfNeededLocked(); err != nil {
+		return nil, err
+	}
+	return writer, nil
+}
+
+func (writer *dailyAccessLogWriter) Write(content []byte) (int, error) {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+
+	if err := writer.rotateIfNeededLocked(); err != nil {
+		return 0, err
+	}
+	return writer.file.Write(content)
+}
+
+func (writer *dailyAccessLogWriter) Close() error {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+
+	if writer.file == nil {
+		return nil
+	}
+	err := writer.file.Close()
+	writer.file = nil
+	return err
+}
+
+func (writer *dailyAccessLogWriter) rotateIfNeededLocked() error {
+	now := writer.nowFunc()
+	date := now.Format(accessLogDateLayout)
+	if writer.file != nil && writer.date == date {
+		return nil
+	}
+
+	logPath := filepath.Join(writer.logDir, "access-"+date+".log")
+	newFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("创建当天访问日志失败: %w", err)
+	}
+	if writer.file != nil {
+		_ = writer.file.Close()
+	}
+	writer.file = newFile
+	writer.date = date
+	cleanupExpiredAccessLogs(writer.logDir, now)
+	return nil
+}
+
+// cleanupExpiredAccessLogs 清理超过保留期的每日访问日志；清理失败不影响当天日志继续写入。
+func cleanupExpiredAccessLogs(logDir string, now time.Time) {
+	entries, err := os.ReadDir(logDir)
+	if err != nil {
+		return
+	}
+
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	cutoff := dayStart.AddDate(0, 0, -(accessLogRetentionDays - 1))
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasPrefix(name, "access-") || !strings.HasSuffix(name, ".log") {
+			continue
+		}
+		dateText := strings.TrimSuffix(strings.TrimPrefix(name, "access-"), ".log")
+		logDate, err := time.ParseInLocation(accessLogDateLayout, dateText, now.Location())
+		if err == nil && logDate.Before(cutoff) {
+			_ = os.Remove(filepath.Join(logDir, name))
+		}
+	}
+}
+
+// accessLogMiddleware 记录全部 /api/ 请求的来源、状态码和耗时，不记录请求体与密码。
 func accessLogMiddleware(logger *log.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 
 		c.Next()
 
-		latency := time.Since(start)
-		clientIP := c.ClientIP()
-		method := c.Request.Method
 		path := c.Request.URL.Path
-		rawQuery := c.Request.URL.RawQuery
-		statusCode := c.Writer.Status()
-		userAgent := c.Request.UserAgent()
-
-		if rawQuery != "" {
-			path = path + "?" + rawQuery
+		if c.Request.URL.RawQuery != "" {
+			path += "?" + c.Request.URL.RawQuery
+		}
+		if len(path) < 5 || path[:5] != "/api/" {
+			return
 		}
 
-		if len(path) >= 5 && path[:5] == "/api/" {
-			logger.Printf(
-				"[%s] ip=%s method=%s path=%s status=%d latency=%s ua=%q",
-				time.Now().Format("2006-01-02 15:04:05"),
-				clientIP,
-				method,
-				path,
-				statusCode,
-				latency.String(),
-				userAgent,
-			)
-		}
+		logger.Printf(
+			"[%s] ip=%s method=%s path=%s status=%d latency=%s ua=%q",
+			time.Now().Format("2006-01-02 15:04:05"),
+			c.ClientIP(),
+			c.Request.Method,
+			path,
+			c.Writer.Status(),
+			time.Since(start).String(),
+			c.Request.UserAgent(),
+		)
 	}
 }

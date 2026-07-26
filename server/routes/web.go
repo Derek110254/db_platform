@@ -1,7 +1,7 @@
 package routes
 
-// web.go 负责前端页面静态资源路由。
-// 它与 API 路由分离，核心目标是支持 Vue 单页应用在刷新、直达子路径时也能正确返回 index.html。
+// web.go 负责嵌入式前端资源和 Vue 单页应用回退路由。
+// 页面文件可以公开加载，但业务数据只能通过受认证保护的 API 获取；未登录界面由前端固定登录页接管。
 
 import (
 	"io/fs"
@@ -15,7 +15,7 @@ import (
 // 处理顺序如下：
 // 1. /api/* 路径保持后端语义，未命中直接返回 404 JSON；
 // 2. 若请求的是实际存在的静态文件，则直接返回该文件；
-// 3. 若是 Vue 前端路由（例如 /query），则统一回退到 index.html，由前端接管页面渲染。
+// 3. 其他页面路径统一回退到 index.html，由前端先校验会话再决定渲染登录页或业务页。
 func RegisterWebRoutes(r *gin.Engine, distFS fs.FS) {
 	fileServer := http.FileServer(http.FS(distFS))
 
