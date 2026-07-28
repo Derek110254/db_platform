@@ -2,65 +2,144 @@ package config
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"net"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
+	"github.com/goccy/go-yaml"
 )
 
-/*
-platform_db.go
-----------------------------------------------------------------------
-集中管理数据库查询平台的管控库连接。
+// PlatformDBConfig 描述平台管控库的 MySQL 连接参数。
+type PlatformDBConfig struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
+	Name     string `yaml:"name"`
+}
 
-管控库保存以下数据：
-1. 用户账号与角色信息。
-2. 登录会话。
-3. 可查询数据库连接配置。
-4. 用户与数据库连接的授权关系。
-5. SQL 收藏夹。
+// SessionConfig 描述登录会话 Cookie 和有效期。
+type SessionConfig struct {
+	CookieName  string `yaml:"cookie_name"`
+	ExpireHours int    `yaml:"expire_hours"`
+}
 
-当前配置仍然写在代码常量中，便于单机部署
-*/
-
-const (
-	PlatformDBHost     = "127.0.0.1"       // 管控库主机
-	PlatformDBPort     = 3306              // 管控库端口
-	PlatformDBUser     = "db_platform"     // 管控库用户名
-	PlatformDBPassword = "db_platform"     // 管控库密码
-	PlatformDBName     = "db_platform"     // 管控库名称
-
-	SessionCookieName  = "db_platform_session_token" // 登录会话 Cookie 名称
-	SessionExpireHours = 8                           // 会话有效期，单位：小时
-)
+// AppConfig 是服务启动时从 YAML 文件加载的完整配置。
+type AppConfig struct {
+	PlatformDB PlatformDBConfig `yaml:"platform_db"`
+	Session    SessionConfig    `yaml:"session"`
+}
 
 var (
+	configMu      sync.RWMutex
+	currentConfig AppConfig
+	configLoaded  bool
+
 	platformDB     *sql.DB
 	platformDBOnce sync.Once
 	platformDBErr  error
 )
 
+// LoadConfig 读取并校验启动配置。配置只应在服务启动阶段加载一次。
+func LoadConfig(path string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return errors.New("必须通过 --config_file 指定配置文件")
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("读取配置文件失败 %q: %w", path, err)
+	}
+
+	var loaded AppConfig
+	if err := yaml.Unmarshal(content, &loaded); err != nil {
+		return fmt.Errorf("解析配置文件失败 %q: %w", path, err)
+	}
+	applyConfigDefaults(&loaded)
+	if err := validateConfig(loaded); err != nil {
+		return fmt.Errorf("配置文件无效 %q: %w", path, err)
+	}
+
+	configMu.Lock()
+	currentConfig = loaded
+	configLoaded = true
+	configMu.Unlock()
+	return nil
+}
+
+func applyConfigDefaults(appConfig *AppConfig) {
+	if appConfig.PlatformDB.Port == 0 {
+		appConfig.PlatformDB.Port = 3306
+	}
+	if strings.TrimSpace(appConfig.Session.CookieName) == "" {
+		appConfig.Session.CookieName = "db_platform_session_token"
+	}
+	if appConfig.Session.ExpireHours == 0 {
+		appConfig.Session.ExpireHours = 8
+	}
+}
+
+func validateConfig(appConfig AppConfig) error {
+	dbConfig := appConfig.PlatformDB
+	if strings.TrimSpace(dbConfig.Host) == "" {
+		return errors.New("platform_db.host 不能为空")
+	}
+	if dbConfig.Port < 1 || dbConfig.Port > 65535 {
+		return errors.New("platform_db.port 必须在 1 到 65535 之间")
+	}
+	if strings.TrimSpace(dbConfig.User) == "" {
+		return errors.New("platform_db.user 不能为空")
+	}
+	if dbConfig.Password == "" {
+		return errors.New("platform_db.password 不能为空")
+	}
+	if strings.TrimSpace(dbConfig.Name) == "" {
+		return errors.New("platform_db.name 不能为空")
+	}
+	if appConfig.Session.ExpireHours < 1 {
+		return errors.New("session.expire_hours 必须大于 0")
+	}
+	return nil
+}
+
+// GetSessionConfig 返回当前会话配置。
+func GetSessionConfig() SessionConfig {
+	configMu.RLock()
+	defer configMu.RUnlock()
+	return currentConfig.Session
+}
+
+func getPlatformDBConfig() (PlatformDBConfig, error) {
+	configMu.RLock()
+	defer configMu.RUnlock()
+	if !configLoaded {
+		return PlatformDBConfig{}, errors.New("服务配置尚未加载")
+	}
+	return currentConfig.PlatformDB, nil
+}
+
 // GetPlatformDB 返回全局共享的管控库连接池。
-// 连接池在进程内只初始化一次，所有认证、授权和配置管理模块复用同一个 *sql.DB。
 func GetPlatformDB() (*sql.DB, error) {
 	platformDBOnce.Do(func() {
-		dsn := fmt.Sprintf(
-			"%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=true&loc=Local",
-			PlatformDBUser,
-			PlatformDBPassword,
-			PlatformDBHost,
-			PlatformDBPort,
-			PlatformDBName,
-		)
-
-		db, err := sql.Open("mysql", dsn)
+		dbConfig, err := getPlatformDBConfig()
 		if err != nil {
 			platformDBErr = err
 			return
 		}
 
-		// 默认连接池规模适合小型内部平台，可按并发量继续调整。
+		db, err := sql.Open("mysql", buildPlatformDBDSN(dbConfig))
+		if err != nil {
+			platformDBErr = err
+			return
+		}
+
 		db.SetMaxOpenConns(20)
 		db.SetMaxIdleConns(10)
 		db.SetConnMaxLifetime(2 * time.Hour)
@@ -70,9 +149,22 @@ func GetPlatformDB() (*sql.DB, error) {
 			platformDBErr = err
 			return
 		}
-
 		platformDB = db
 	})
 
 	return platformDB, platformDBErr
+}
+
+// buildPlatformDBDSN 在驱动默认配置上设置连接参数，保留其默认认证兼容策略。
+func buildPlatformDBDSN(dbConfig PlatformDBConfig) string {
+	dsnConfig := mysql.NewConfig()
+	dsnConfig.User = dbConfig.User
+	dsnConfig.Passwd = dbConfig.Password
+	dsnConfig.Net = "tcp"
+	dsnConfig.Addr = net.JoinHostPort(dbConfig.Host, strconv.Itoa(dbConfig.Port))
+	dsnConfig.DBName = dbConfig.Name
+	dsnConfig.Params = map[string]string{"charset": "utf8mb4"}
+	dsnConfig.ParseTime = true
+	dsnConfig.Loc = time.Local
+	return dsnConfig.FormatDSN()
 }

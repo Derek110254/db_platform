@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"log"
 	"os"
 	"path/filepath"
@@ -8,6 +9,19 @@ import (
 	"testing"
 	"time"
 )
+
+func TestWriteUsageShowsDoubleDashConfigFlag(t *testing.T) {
+	var output bytes.Buffer
+	writeUsage(&output, "db_platform")
+
+	usage := output.String()
+	if !strings.Contains(usage, "db_platform --config_file <配置文件路径>") {
+		t.Fatalf("usage does not show the expected flag: %q", usage)
+	}
+	if strings.Contains(usage, "\n  -config_file") {
+		t.Fatalf("usage unexpectedly shows the single-dash flag: %q", usage)
+	}
+}
 
 // TestNewAccessLoggerCreatesMissingDirectory 验证编译后的程序首次启动时可自动创建日志目录和文件。
 func TestNewAccessLoggerCreatesMissingDirectory(t *testing.T) {

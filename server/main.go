@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"db_platform/server/auth"
+	"db_platform/server/config"
 	"db_platform/server/routes"
 
 	"github.com/gin-gonic/gin"
@@ -24,6 +26,15 @@ var dist embed.FS
 // main 是服务端入口。
 // 启动流程：清理过期会话、初始化 Gin、注册访问日志、注册 API、挂载前端静态资源。
 func main() {
+	flag.Usage = func() {
+		writeUsage(flag.CommandLine.Output(), filepath.Base(os.Args[0]))
+	}
+	configFile := flag.String("config_file", "", "YAML 配置文件路径")
+	flag.Parse()
+	if err := config.LoadConfig(*configFile); err != nil {
+		panic(err)
+	}
+
 	if err := auth.DeleteExpiredSessions(); err != nil {
 		panic(fmt.Sprintf("清理过期会话失败: %v", err))
 	}
@@ -55,6 +66,14 @@ func main() {
 	if err := r.Run(":" + port); err != nil {
 		panic(err)
 	}
+}
+
+// writeUsage 输出与 README 一致的双横线启动参数说明。
+func writeUsage(output io.Writer, command string) {
+	fmt.Fprintf(output, "用法: %s --config_file <配置文件路径>\n\n", command)
+	fmt.Fprintln(output, "参数:")
+	fmt.Fprintln(output, "  --config_file string")
+	fmt.Fprintln(output, "        YAML 配置文件路径（必填）")
 }
 
 const (

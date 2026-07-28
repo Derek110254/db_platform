@@ -38,7 +38,8 @@ func getAuthDB() (*sql.DB, error) {
 
 // ReadSessionCookie 从请求 Cookie 中读取会话 token。
 func ReadSessionCookie(c *gin.Context) string {
-	val, err := c.Cookie(config.SessionCookieName)
+	sessionConfig := config.GetSessionConfig()
+	val, err := c.Cookie(sessionConfig.CookieName)
 	if err != nil {
 		return ""
 	}
@@ -47,13 +48,15 @@ func ReadSessionCookie(c *gin.Context) string {
 
 // WriteSessionCookie 将会话 token 写入浏览器 Cookie。
 func WriteSessionCookie(c *gin.Context, token string) {
-	maxAge := config.SessionExpireHours * 3600
-	c.SetCookie(config.SessionCookieName, token, maxAge, "/", "", false, true)
+	sessionConfig := config.GetSessionConfig()
+	maxAge := sessionConfig.ExpireHours * 3600
+	c.SetCookie(sessionConfig.CookieName, token, maxAge, "/", "", false, true)
 }
 
 // ClearSessionCookie 清除浏览器中的会话 Cookie。
 func ClearSessionCookie(c *gin.Context) {
-	c.SetCookie(config.SessionCookieName, "", -1, "/", "", false, true)
+	sessionConfig := config.GetSessionConfig()
+	c.SetCookie(sessionConfig.CookieName, "", -1, "/", "", false, true)
 }
 
 // Login 使用账号密码登录，并在校验通过后创建一条会话记录。
@@ -120,7 +123,8 @@ LIMIT 1
 		return SessionUser{}, "", err
 	}
 
-	expireTime := time.Now().Add(time.Duration(config.SessionExpireHours) * time.Hour)
+	sessionConfig := config.GetSessionConfig()
+	expireTime := time.Now().Add(time.Duration(sessionConfig.ExpireHours) * time.Hour)
 	_, err = db.Exec(`
 INSERT INTO session (session_token, user_id, username, expire_time)
 VALUES (?, ?, ?, ?)
