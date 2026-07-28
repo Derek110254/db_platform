@@ -1,2 +1,6 @@
+db.yml
+server/db.yml
 server/logs/*
 server/tmp/*
+server/db_platform-windows-amd64.exe
+server/db_platform-linux-amd64

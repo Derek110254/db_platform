@@ -1,0 +1,10 @@
+platform_db:
+  host: 127.0.0.1
+  port: 3306
+  user: db_platform
+  password: db_platform
+  name: db_platform
+
+session:
+  cookie_name: db_platform_session_token
+  expire_hours: 8
